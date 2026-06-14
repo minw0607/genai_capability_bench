@@ -310,6 +310,41 @@ they affect capability, but they do not define the top-level taxonomy.
 
 ---
 
+## 🏛️ Regulatory Alignment
+
+This repo is designed to support evidence generation for AI governance, model
+risk management, and internal assurance programs. It does **not** certify legal
+compliance on its own; instead, it produces reproducible evaluation artifacts
+that can help teams document model capability, limitations, monitoring results,
+and control effectiveness.
+
+| Standard / Guidance | Why It Matters | How This Repo Aligns |
+|---|---|---|
+| [NIST AI Risk Management Framework 1.0](https://www.nist.gov/itl/ai-risk-management-framework) | Voluntary framework for managing AI risks to individuals, organizations, and society | Supports the `Measure` and `Manage` functions through repeatable capability tests, scorecards, thresholds, and run artifacts |
+| [NIST AI 600-1: Generative AI Profile](https://www.nist.gov/publications/artificial-intelligence-risk-management-framework-generative-artificial-intelligence) | GenAI-specific profile for identifying and managing risks unique to generative AI | Provides structured tests for answer quality, truthfulness, reasoning, instruction adherence, RAG grounding, and agent/tool behavior |
+| [EU AI Act - Regulation (EU) 2024/1689](https://eur-lex.europa.eu/eli/reg/2024/1689/oj/eng) | Risk-based EU AI regulation covering safe and trustworthy AI systems, including obligations for high-risk and general-purpose AI contexts | Helps create technical evaluation evidence, benchmark records, model comparison outputs, and post-deployment monitoring inputs |
+| [ISO/IEC 42001:2023](https://www.iso.org/standard/42001) | AI management system standard for governing AI development and use | Supports management-system practices through documented test procedures, versioned configs, evaluation records, and continuous improvement loops |
+| [ISO/IEC 23894:2023](https://www.iso.org/standard/77304.html) | Guidance for AI-specific risk management across the AI lifecycle | Provides measurable capability indicators that can feed risk identification, analysis, evaluation, treatment, and monitoring |
+| [OECD AI Principles](https://oecd.ai/en/ai-principles) | International principles for trustworthy AI, updated in 2024 to reflect general-purpose and generative AI developments | Aligns with transparency, accountability, robustness, and evidence-based evaluation practices |
+| [OWASP Top 10 for LLM Applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/) | Security-oriented guidance for LLM application risks, including prompt injection, output handling, excessive agency, and misinformation | Future tool-use and agentic evaluations can capture excessive agency, tool misuse, misinformation, and output-handling failure modes as diagnostic signals |
+
+The intended audit trail is:
+
+```text
+evaluation config
+  -> dataset/task version
+  -> model/provider settings
+  -> raw model outputs
+  -> metric-level results
+  -> capability scorecard
+  -> reproducible artifacts for review
+```
+
+This makes the suite useful for internal model governance, vendor/model
+comparison, pre-deployment validation, regression testing, and ongoing monitoring.
+
+---
+
 ## 🧪 Development Notes
 
 - Keep reusable implementation in `src/`.
