@@ -26,6 +26,9 @@ dev = [
   "nbformat>=5.10",
   "pytest>=8.0",
 ]
+hf = [
+  "datasets>=2.19",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -33,4 +36,3 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-

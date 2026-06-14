@@ -249,10 +249,41 @@ Task files can be JSON, JSONL, or CSV. Each task maps into the shared
 
 ---
 
+## 🗃️ Dataset Registry
+
+Public and local datasets are normalized into the shared `EvalTask` schema before
+evaluation. The registry supports local samples, custom files, and Hugging Face
+datasets with optional local caching.
+
+| Dataset Key | Source | Primary Use |
+|---|---|---|
+| `answer_accuracy_sample` | Local sample | Fast answer-accuracy smoke tests across multiple domains |
+| `core_demo_mixed` | Local sample | Tiny mixed-capability workflow test |
+| `mmlu` | Hugging Face: `cais/mmlu` | Broad multiple-choice knowledge benchmark |
+| `triviaqa` | Hugging Face: `mandarjoshi/trivia_qa` | Open-domain factual QA |
+| `natural_questions` | Hugging Face: `sentence-transformers/natural-questions` | Real user-style QA |
+| `squad` | Hugging Face: `rajpurkar/squad` | Context-grounded reading comprehension |
+| `arc` | Hugging Face: `ai2_arc` | Science multiple-choice QA |
+| `hotpotqa` | Hugging Face: `hotpot_qa` | Multi-hop QA; also useful for future RAG/reasoning workflows |
+| `truthfulqa` | Hugging Face: `truthful_qa` | Truthfulness and misconception-resistant QA |
+| `custom` | Local JSON/JSONL/CSV | Enterprise golden sets and domain-specific benchmarks |
+
+Install Hugging Face dataset support when using public downloads:
+
+```bash
+pip install -e ".[hf]"
+```
+
+Downloaded public datasets are normalized and cached under `datasets/cache/`
+when `CACHE_LOCAL_COPY=True`.
+
+---
+
 ## 🗂️ Repository Layout
 
 ```text
 configs/                         Evaluation and model configs
+datasets/cache/                   Normalized public dataset cache (ignored by git)
 datasets/samples/                 Small local demo datasets
 docs/                             Design notes and development plan
 notebooks/                        Demo-style capability notebooks

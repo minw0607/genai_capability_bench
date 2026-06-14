@@ -7,4 +7,6 @@ __pycache__/
 .DS_Store
 outputs/runs/*
 !outputs/runs/.gitkeep
+datasets/cache/*
+!datasets/cache/.gitkeep
 *.egg-info/
