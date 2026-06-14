@@ -347,44 +347,33 @@ comparison, pre-deployment validation, regression testing, and ongoing monitorin
 
 ## 📚 References and Related Work
 
-This project is inspired by academic benchmarks, applied evaluation frameworks,
-and production GenAI assurance practices. The references below are not exhaustive,
-but they mark the main threads this repo builds on.
+[1] Stephanie Lin, Jacob Hilton, and Owain Evans. [TruthfulQA: Measuring How Models Mimic Human Falsehoods](https://arxiv.org/abs/2109.07958). ACL, 2022.
 
-### Academic Foundations
+[2] Percy Liang et al. [Holistic Evaluation of Language Models](https://arxiv.org/abs/2211.09110). arXiv, 2022.
 
-| Area | Reference | Relevance |
-|---|---|---|
-| Truthfulness | [TruthfulQA: Measuring How Models Mimic Human Falsehoods](https://arxiv.org/abs/2109.07958) | Foundation for misconception-resistant QA and truthfulness evaluation |
-| Holistic evaluation | [HELM: Holistic Evaluation of Language Models](https://arxiv.org/abs/2211.09110) | Influences the multi-capability, multi-metric framing of this repo |
-| Broad knowledge testing | [MMLU: Measuring Massive Multitask Language Understanding](https://arxiv.org/abs/2009.03300) | Motivates domain/category slicing across subjects such as math, law, history, science, and more |
-| Capability probing | [BIG-bench: Beyond the Imitation Game Benchmark](https://arxiv.org/abs/2206.04615) | Reference point for diverse task collections designed to probe model capabilities |
-| Mathematical reasoning | [GSM8K / Training Verifiers to Solve Math Word Problems](https://arxiv.org/abs/2110.14168) | Relevant to arithmetic and stepwise reasoning evaluation |
-| RAG evaluation | [RAGAS: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217) | Informs future RAG metrics for faithfulness, answer relevance, and context use |
-| Multi-hop QA | [HotpotQA: A Dataset for Diverse, Explainable Multi-hop Question Answering](https://aclanthology.org/D18-1259/) | Relevant to multi-hop reasoning, retrieval quality, and explainable QA |
-| Web agents | [Mind2Web: Towards a Generalist Agent for the Web](https://arxiv.org/abs/2306.06070) | Relevant to future tool-use and agentic task-completion evaluation |
+[3] Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn Song, and Jacob Steinhardt. [Measuring Massive Multitask Language Understanding](https://arxiv.org/abs/2009.03300). ICLR, 2021.
 
-### Practical Evaluation Resources
+[4] Aarohi Srivastava et al. [Beyond the Imitation Game: Quantifying and Extrapolating the Capabilities of Language Models](https://arxiv.org/abs/2206.04615). arXiv, 2022.
 
-| Resource | Relevance |
-|---|---|
-| [OpenAI Evals](https://github.com/openai/evals) | Framework pattern for reusable model and system evaluations |
-| [EleutherAI lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | Reference implementation for running many benchmark tasks across language models |
-| [Stanford HELM](https://crfm.stanford.edu/helm/) | Public benchmark and methodology for transparent model evaluation |
-| [Ragas](https://docs.ragas.io/en/stable/) | Practical RAG evaluation library and metric vocabulary |
-| [LangSmith Evaluation](https://docs.langchain.com/langsmith/evaluation) | Experiment comparison, regression testing, online evaluators, and monitoring concepts |
-| [DeepEval](https://deepeval.com/docs/evaluation-introduction) | Open-source LLM evaluation patterns for metrics, tests, and application-level evaluation |
+[5] Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, Christopher Hesse, and John Schulman. [Training Verifiers to Solve Math Word Problems](https://arxiv.org/abs/2110.14168). arXiv, 2021.
 
-### Local Companion Repos
+[6] Shahul Es, Jithin James, Luis Espinosa-Anke, and Steven Schockaert. [RAGAS: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217). EACL Demo, 2024.
 
-This repo is also designed to align with two companion projects:
+[7] Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio, William W. Cohen, Ruslan Salakhutdinov, and Christopher D. Manning. [HotpotQA: A Dataset for Diverse, Explainable Multi-hop Question Answering](https://aclanthology.org/D18-1259/). EMNLP, 2018.
 
-- **RAG evaluation framework**: future adapter target for groundedness,
-  completeness, retrieval quality, citation support, cost tracking, and RAG
-  faithfulness metrics.
-- **Agent / multi-agent evaluation framework**: future adapter target for task
-  completion, tool correctness, trace capture, cost, latency, and agent workflow
-  comparison.
+[8] Xiang Deng, Yu Gu, Boyuan Zheng, Shijie Chen, Samuel Stevens, Boshi Wang, Huan Sun, and Yu Su. [Mind2Web: Towards a Generalist Agent for the Web](https://arxiv.org/abs/2306.06070). NeurIPS, 2023.
+
+[9] OpenAI. [Evals: A Framework for Evaluating LLMs and LLM Systems](https://github.com/openai/evals). GitHub.
+
+[10] EleutherAI. [Language Model Evaluation Harness](https://github.com/EleutherAI/lm-evaluation-harness). GitHub.
+
+[11] Stanford Center for Research on Foundation Models. [HELM: Holistic Evaluation of Language Models](https://crfm.stanford.edu/helm/).
+
+[12] Exploding Gradients. [Ragas Documentation](https://docs.ragas.io/en/stable/).
+
+[13] LangChain. [LangSmith Evaluation Documentation](https://docs.langchain.com/langsmith/evaluation).
+
+[14] Confident AI. [DeepEval: The LLM Evaluation Framework](https://deepeval.com/docs/evaluation-introduction).
 
 ---
 
