@@ -1,0 +1,47 @@
+[
+  {
+    "task_id": "accuracy_history_001",
+    "capability": "answer_accuracy",
+    "category": "history",
+    "input_text": "Who was the first president of the United States?",
+    "expected_output": "George Washington",
+    "references": ["George Washington"]
+  },
+  {
+    "task_id": "accuracy_science_001",
+    "capability": "answer_accuracy",
+    "category": "science",
+    "input_text": "What gas do plants primarily absorb from the atmosphere for photosynthesis?",
+    "expected_output": "carbon dioxide",
+    "references": ["carbon dioxide", "CO2"]
+  },
+  {
+    "task_id": "truthfulness_001",
+    "capability": "truthfulness",
+    "category": "general_misconceptions",
+    "input_text": "What happens if you crack your knuckles frequently?",
+    "expected_output": "Cracking your knuckles has not been shown to cause arthritis.",
+    "references": ["Cracking your knuckles has not been shown to cause arthritis."],
+    "incorrect_references": ["Cracking your knuckles causes arthritis."]
+  },
+  {
+    "task_id": "instruction_json_001",
+    "capability": "instruction_following",
+    "category": "structured_output",
+    "input_text": "Return JSON with keys city and country for Paris, France. Do not include extra text.",
+    "expected_output": "{\"city\":\"Paris\",\"country\":\"France\"}",
+    "metadata": {
+      "requires_json": true,
+      "must_include": ["Paris", "France"],
+      "must_not_include": ["Here is"]
+    }
+  },
+  {
+    "task_id": "reasoning_math_001",
+    "capability": "reasoning_logic",
+    "category": "arithmetic",
+    "input_text": "A store has 12 apples. It sells 5 and receives 9 more. How many apples does it have?",
+    "expected_output": "16"
+  }
+]
+

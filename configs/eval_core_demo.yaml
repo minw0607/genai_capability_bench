@@ -1,0 +1,18 @@
+run_id: core_demo
+dataset: datasets/samples/core_demo_tasks.json
+output_dir: outputs/runs
+default_pass_threshold: 0.7
+notes: "Smoke demo for the first core LLM capability evaluators."
+
+models:
+  - name: DemoMock
+    provider: mock
+    model: mock-model
+    metadata:
+      answers:
+        "first president": "George Washington"
+        "photosynthesis": "carbon dioxide"
+        "crack your knuckles": "Cracking your knuckles has not been shown to cause arthritis."
+        "Return JSON": "{\"city\":\"Paris\",\"country\":\"France\"}"
+        "12 apples": "We compute 12 - 5 + 9 = 16. Final answer: 16"
+
