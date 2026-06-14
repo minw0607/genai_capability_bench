@@ -37,6 +37,8 @@ class DatasetSpec:
     default_split: str = "validation"
     normalizer: str = "generic"
     requires_context: bool = False
+    task_format: str = "open_qa"
+    scoring_guidance: str = "reference_match"
     notes: str = ""
 
 
@@ -50,6 +52,8 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         default_split="local",
         normalizer="already_normalized",
         description="Small local closed-book factual QA sample across common domains.",
+        task_format="closed_book_short_answer",
+        scoring_guidance="exact/contains/F1/TF-IDF reference matching",
     ),
     "core_demo_mixed": DatasetSpec(
         key="core_demo_mixed",
@@ -60,6 +64,8 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         default_split="local",
         normalizer="already_normalized",
         description="Tiny mixed-capability smoke-test dataset; filtered to answer accuracy in this notebook.",
+        task_format="mixed_demo",
+        scoring_guidance="capability-specific starter scoring",
     ),
     "mmlu": DatasetSpec(
         key="mmlu",
@@ -71,6 +77,8 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         default_split="test",
         normalizer="mmlu",
         description="Massive Multitask Language Understanding multiple-choice benchmark.",
+        task_format="multiple_choice",
+        scoring_guidance="option-text and answer-key matching; future grader should use exact option accuracy",
         notes="Large benchmark. Use small sample sizes first.",
     ),
     "triviaqa": DatasetSpec(
@@ -83,6 +91,8 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         default_split="validation",
         normalizer="triviaqa",
         description="Open-domain trivia question answering benchmark.",
+        task_format="open_domain_short_answer",
+        scoring_guidance="alias/reference matching; embedding review useful for paraphrases",
         notes="Some configurations are large; normalized cache is recommended.",
     ),
     "natural_questions": DatasetSpec(
@@ -94,6 +104,8 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         default_split="train",
         normalizer="natural_questions",
         description="Real user-style question-answer pairs derived from Natural Questions.",
+        task_format="open_domain_short_answer",
+        scoring_guidance="reference matching; answers may have multiple aliases",
     ),
     "squad": DatasetSpec(
         key="squad",
@@ -105,6 +117,8 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         normalizer="squad",
         requires_context=True,
         description="Reading-comprehension QA over Wikipedia passages.",
+        task_format="context_grounded_qa",
+        scoring_guidance="reference matching plus future context-grounded scoring",
         notes="Context is stored in task metadata; better suited to future context/RAG workflows.",
     ),
     "arc": DatasetSpec(
@@ -117,6 +131,8 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         default_split="test",
         normalizer="arc",
         description="Grade-school science multiple-choice QA benchmark.",
+        task_format="multiple_choice",
+        scoring_guidance="option-text and answer-key matching; future grader should use exact option accuracy",
     ),
     "hotpotqa": DatasetSpec(
         key="hotpotqa",
@@ -129,6 +145,8 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         normalizer="hotpotqa",
         requires_context=True,
         description="Diverse explainable multi-hop QA benchmark.",
+        task_format="multi_hop_qa",
+        scoring_guidance="reference matching; future scoring should separate reasoning and RAG/context use",
         notes="Also relevant to future reasoning and RAG capability notebooks.",
     ),
     "truthfulqa": DatasetSpec(
@@ -141,6 +159,8 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         default_split="validation",
         normalizer="truthfulqa",
         description="Truthfulness benchmark built around common misconceptions.",
+        task_format="truthfulness_generation",
+        scoring_guidance="correct-vs-incorrect references; primary evaluator should be Truthfulness",
         notes="Primary home is the Truthfulness notebook; selectable here with caveats.",
     ),
     "custom": DatasetSpec(
@@ -151,6 +171,8 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         default_split="custom",
         normalizer="already_normalized",
         description="User-provided JSON, JSONL, or CSV file already matching the EvalTask schema.",
+        task_format="custom_normalized",
+        scoring_guidance="depends on provided references and metadata",
     ),
 }
 
@@ -254,6 +276,8 @@ def dataset_options_table(capability: Capability | None = None) -> pd.DataFrame:
                 "source": spec.source_type,
                 "default_split": spec.default_split,
                 "description": spec.description,
+                "task_format": spec.task_format,
+                "scoring_guidance": spec.scoring_guidance,
                 "notes": spec.notes,
             }
         )

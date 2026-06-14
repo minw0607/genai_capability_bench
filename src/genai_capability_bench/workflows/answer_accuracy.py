@@ -19,6 +19,7 @@ from genai_capability_bench.datasets import materialize_dataset
 from genai_capability_bench.reporting.diagnostics import add_answer_accuracy_diagnostics
 from genai_capability_bench.reporting.executive_summary import generate_summary
 from genai_capability_bench.reporting.tables import capability_leaderboard, summarize_results
+from genai_capability_bench.metrics.llm_judge import judge_with_rubric
 
 
 @dataclass
@@ -39,6 +40,9 @@ class AnswerAccuracyRunConfig:
     download_if_missing: bool = True
     cache_local_copy: bool = True
     refresh_dataset_cache: bool = False
+    enable_judge_review: bool = False
+    judge_model_name: str | None = None
+    judge_max_cases: int = 10
 
 
 @dataclass
@@ -55,6 +59,7 @@ class AnswerAccuracyRunResult:
     dataset_manifest_df: pd.DataFrame
     report_path: Path
     summary_text: str
+    judge_enabled: bool = False
 
 
 def load_answer_accuracy_tasks(config: AnswerAccuracyRunConfig) -> tuple[list[EvalTask], pd.DataFrame]:
@@ -138,6 +143,13 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
     dataset_summary_df = _summarize_by_dataset(results_df)
     leaderboard_df = capability_leaderboard(results)
     diagnostics_df = add_answer_accuracy_diagnostics(results_df, pass_threshold)
+    if config.enable_judge_review:
+        diagnostics_df = _add_judge_review(
+            diagnostics_df,
+            model_config=model_config,
+            judge_model_name=config.judge_model_name,
+            max_cases=config.judge_max_cases,
+        )
     summary_text = generate_summary(summary_df)
 
     report = _build_markdown_report(
@@ -148,6 +160,7 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
         dataset_manifest_df=dataset_manifest_df,
         dataset_summary_df=dataset_summary_df,
         summary_text=summary_text,
+        judge_enabled=config.enable_judge_review,
     )
     report_path = run_dir / "answer_accuracy_report.md"
 
@@ -171,6 +184,7 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
         dataset_manifest_df=dataset_manifest_df,
         report_path=report_path,
         summary_text=summary_text,
+        judge_enabled=config.enable_judge_review,
     )
 
 
@@ -183,6 +197,7 @@ def _build_markdown_report(
     dataset_manifest_df: pd.DataFrame,
     dataset_summary_df: pd.DataFrame,
     summary_text: str,
+    judge_enabled: bool,
 ) -> str:
     model_names = ", ".join(m.name for m in models)
     dataset_lines = "\n".join(
@@ -200,6 +215,7 @@ def _build_markdown_report(
 **Models:** {model_names}  
 **Tasks evaluated:** {len(tasks)}  
 **Pass threshold:** {pass_threshold:.2f}
+**Judge review:** {"Enabled" if judge_enabled else "Disabled"}
 
 ## Dataset Manifest
 
@@ -251,3 +267,59 @@ def _summarize_by_dataset(results_df: pd.DataFrame) -> pd.DataFrame:
     summary["avg_score"] = summary["avg_score"].round(4)
     summary["pass_rate"] = summary["pass_rate"].round(4)
     return summary
+
+
+def _add_judge_review(
+    diagnostics_df: pd.DataFrame,
+    *,
+    model_config: dict[str, Any],
+    judge_model_name: str | None,
+    max_cases: int,
+) -> pd.DataFrame:
+    """Run optional LLM judge review for flagged cases only."""
+
+    if diagnostics_df.empty:
+        return diagnostics_df
+
+    df = diagnostics_df.copy()
+    df["judge_score"] = None
+    df["judge_reason"] = None
+
+    flagged_idx = df[df["flagged"]].head(max_cases).index
+    if len(flagged_idx) == 0:
+        return df
+
+    model_row = dict(model_config.get("models", [{}])[0])
+    judge_model = judge_model_name or model_config.get("judge_model") or model_row.get("model")
+    if not judge_model:
+        df.loc[flagged_idx, "judge_reason"] = "Judge review skipped: no judge model configured."
+        return df
+
+    judge_spec = ModelSpec(
+        name=f"Judge-{judge_model}",
+        provider=model_row.get("provider", "openai_compatible"),
+        model=judge_model,
+        api_version=model_row.get("api_version"),
+        temperature=0.0,
+        max_tokens=500,
+        metadata=model_row.get("metadata", {}),
+    )
+    client = create_client(judge_spec)
+    rubric = (
+        "Score whether the answer correctly answers the question given the reference. "
+        "Use 1.0 for fully correct, 0.5 for partially correct, and 0.0 for incorrect. "
+        "Penalize unsupported extra claims."
+    )
+
+    for idx in flagged_idx:
+        row = df.loc[idx]
+        reference = str(row.get("expected_output") or "")
+        task = f"Question: {row.get('input_text')}"
+        answer = str(row.get("actual_output") or "")
+        try:
+            judge = judge_with_rubric(client, task=task, answer=answer, reference=reference, rubric=rubric)
+            df.at[idx, "judge_score"] = judge.score
+            df.at[idx, "judge_reason"] = judge.reason
+        except Exception as exc:
+            df.at[idx, "judge_reason"] = f"Judge review failed: {exc}"
+    return df

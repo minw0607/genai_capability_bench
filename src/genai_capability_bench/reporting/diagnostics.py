@@ -48,7 +48,43 @@ def add_answer_accuracy_diagnostics(results_df: pd.DataFrame, pass_threshold: fl
         return "Looks good"
 
     df["review_priority"] = [priority(float(s), bool(d)) for s, d in zip(df["score"], df["metric_disagreement"])]
+    df["flagged"] = df["review_priority"] != "Looks good"
+    df["flag_reason"] = [
+        _flag_reason(row, pass_threshold)
+        for row in df[
+            [
+                "score",
+                "exact_match",
+                "contains_match",
+                "token_f1",
+                "tfidf_similarity",
+                "metric_disagreement",
+                "review_priority",
+            ]
+        ].to_dict(orient="records")
+    ]
+    df["recommended_action"] = df["review_priority"].map(
+        {
+            "High review priority": "Inspect manually; likely incorrect or missing expected answer.",
+            "Near threshold": "Review with stronger semantic metric or judge model.",
+            "Metric disagreement": "Check whether lexical metrics under/over-credit a paraphrase.",
+            "Looks good": "No immediate review required.",
+        }
+    )
     return df
+
+
+def _flag_reason(row: dict[str, Any], pass_threshold: float) -> str:
+    if row["score"] < 0.4:
+        return f"Composite score {row['score']:.2f} is well below review threshold."
+    if row["score"] < pass_threshold:
+        return f"Composite score {row['score']:.2f} is below pass threshold {pass_threshold:.2f}."
+    if row["metric_disagreement"]:
+        return (
+            "Metrics disagree: exact/contains/F1/TF-IDF signals are far apart, "
+            "so the case may need semantic or judge review."
+        )
+    return "No flag triggered."
 
 
 def metric_guide_table() -> pd.DataFrame:
@@ -101,4 +137,3 @@ def score_interpretation_table() -> pd.DataFrame:
             {"Score Band": "0.00 - 0.39", "Interpretation": "Likely incorrect or unsupported."},
         ]
     )
-
