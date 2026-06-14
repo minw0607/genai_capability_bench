@@ -1,0 +1,16 @@
+# Template for running a real OpenAI-compatible target LLM.
+# Copy this file, adjust dataset/sampling as needed, and fill in .env.
+
+run_id: answer_accuracy_real_model
+dataset: datasets/samples/core_demo_tasks.json
+output_dir: outputs/runs
+default_pass_threshold: ${EVAL_PASS_THRESHOLD}
+notes: "Template real-model run using OpenAI-compatible provider settings from .env."
+
+models:
+  - name: ${OPENAI_GENERATION_MODEL}
+    provider: openai_compatible
+    model: ${OPENAI_GENERATION_MODEL}
+    api_version: ${OPENAI_API_VERSION}
+    temperature: 0.0
+    max_tokens: 1000

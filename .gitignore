@@ -4,7 +4,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ipynb_checkpoints/
+.DS_Store
 outputs/runs/*
 !outputs/runs/.gitkeep
 *.egg-info/
-

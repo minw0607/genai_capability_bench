@@ -193,20 +193,27 @@ Example summary from the smoke demo:
 Provider settings are read from `.env`:
 
 ```bash
+OPENAI_GENERATION_MODEL=gpt-4o
+OPENAI_JUDGE_MODEL=gpt-4o
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+
 OPENAI_API_KEY=
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_API_VERSION=
 
 OPENAI_APIM_HEADER_NAME=
 OPENAI_APIM_SUBSCRIPTION_KEY=
-
-OPENAI_GENERATION_MODEL=gpt-4o
-OPENAI_JUDGE_MODEL=gpt-4o
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ```
 
 For Azure OpenAI, set `OPENAI_API_VERSION`. For direct OpenAI-compatible endpoints,
 leave it blank and set `OPENAI_BASE_URL` as needed.
+
+The repo includes two starter configs:
+
+| Config | Purpose |
+|---|---|
+| [`configs/eval_core_demo.yaml`](configs/eval_core_demo.yaml) | Local mock-model smoke test; no credentials required |
+| [`configs/eval_openai_compatible_template.yaml`](configs/eval_openai_compatible_template.yaml) | Real-model template that reads `${OPENAI_GENERATION_MODEL}`, `${OPENAI_API_VERSION}`, and other values from `.env` |
 
 ---
 

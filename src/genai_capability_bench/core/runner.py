@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import uuid
 from dataclasses import asdict
@@ -11,6 +12,7 @@ from typing import Any
 
 import pandas as pd
 import yaml
+from dotenv import load_dotenv
 
 from genai_capability_bench.capabilities.registry import get_evaluator
 from genai_capability_bench.clients.factory import create_client
@@ -19,8 +21,22 @@ from genai_capability_bench.reporting.tables import summarize_results
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
+    load_dotenv()
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    return _expand_env_vars(config)
+
+
+def _expand_env_vars(value):
+    """Recursively expand ${ENV_VAR} placeholders in config values."""
+
+    if isinstance(value, dict):
+        return {k: _expand_env_vars(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_expand_env_vars(v) for v in value]
+    if isinstance(value, str):
+        return os.path.expandvars(value)
+    return value
 
 
 def load_tasks(path: str | Path) -> list[EvalTask]:
@@ -120,4 +136,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
