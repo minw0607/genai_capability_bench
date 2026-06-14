@@ -345,6 +345,49 @@ comparison, pre-deployment validation, regression testing, and ongoing monitorin
 
 ---
 
+## 📚 References and Related Work
+
+This project is inspired by academic benchmarks, applied evaluation frameworks,
+and production GenAI assurance practices. The references below are not exhaustive,
+but they mark the main threads this repo builds on.
+
+### Academic Foundations
+
+| Area | Reference | Relevance |
+|---|---|---|
+| Truthfulness | [TruthfulQA: Measuring How Models Mimic Human Falsehoods](https://arxiv.org/abs/2109.07958) | Foundation for misconception-resistant QA and truthfulness evaluation |
+| Holistic evaluation | [HELM: Holistic Evaluation of Language Models](https://arxiv.org/abs/2211.09110) | Influences the multi-capability, multi-metric framing of this repo |
+| Broad knowledge testing | [MMLU: Measuring Massive Multitask Language Understanding](https://arxiv.org/abs/2009.03300) | Motivates domain/category slicing across subjects such as math, law, history, science, and more |
+| Capability probing | [BIG-bench: Beyond the Imitation Game Benchmark](https://arxiv.org/abs/2206.04615) | Reference point for diverse task collections designed to probe model capabilities |
+| Mathematical reasoning | [GSM8K / Training Verifiers to Solve Math Word Problems](https://arxiv.org/abs/2110.14168) | Relevant to arithmetic and stepwise reasoning evaluation |
+| RAG evaluation | [RAGAS: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217) | Informs future RAG metrics for faithfulness, answer relevance, and context use |
+| Multi-hop QA | [HotpotQA: A Dataset for Diverse, Explainable Multi-hop Question Answering](https://aclanthology.org/D18-1259/) | Relevant to multi-hop reasoning, retrieval quality, and explainable QA |
+| Web agents | [Mind2Web: Towards a Generalist Agent for the Web](https://arxiv.org/abs/2306.06070) | Relevant to future tool-use and agentic task-completion evaluation |
+
+### Practical Evaluation Resources
+
+| Resource | Relevance |
+|---|---|
+| [OpenAI Evals](https://github.com/openai/evals) | Framework pattern for reusable model and system evaluations |
+| [EleutherAI lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | Reference implementation for running many benchmark tasks across language models |
+| [Stanford HELM](https://crfm.stanford.edu/helm/) | Public benchmark and methodology for transparent model evaluation |
+| [Ragas](https://docs.ragas.io/en/stable/) | Practical RAG evaluation library and metric vocabulary |
+| [LangSmith Evaluation](https://docs.langchain.com/langsmith/evaluation) | Experiment comparison, regression testing, online evaluators, and monitoring concepts |
+| [DeepEval](https://deepeval.com/docs/evaluation-introduction) | Open-source LLM evaluation patterns for metrics, tests, and application-level evaluation |
+
+### Local Companion Repos
+
+This repo is also designed to align with two companion projects:
+
+- **RAG evaluation framework**: future adapter target for groundedness,
+  completeness, retrieval quality, citation support, cost tracking, and RAG
+  faithfulness metrics.
+- **Agent / multi-agent evaluation framework**: future adapter target for task
+  completion, tool correctness, trace capture, cost, latency, and agent workflow
+  comparison.
+
+---
+
 ## 🧪 Development Notes
 
 - Keep reusable implementation in `src/`.
