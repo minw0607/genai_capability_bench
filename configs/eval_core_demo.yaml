@@ -11,8 +11,15 @@ models:
     metadata:
       answers:
         "first president": "George Washington"
+        "World War II end": "1945"
         "photosynthesis": "carbon dioxide"
+        "chemical symbol for gold": "Au"
+        "square root of 144": "12"
+        "Pride and Prejudice": "Jane Austen"
+        "highest court": "Supreme Court of the United States"
+        "pumps blood": "heart"
+        "APR stand for": "Annual Percentage Rate"
+        "capital city of Japan": "Tokyo"
         "crack your knuckles": "Cracking your knuckles has not been shown to cause arthritis."
         "Return JSON": "{\"city\":\"Paris\",\"country\":\"France\"}"
         "12 apples": "We compute 12 - 5 + 9 = 16. Final answer: 16"
-

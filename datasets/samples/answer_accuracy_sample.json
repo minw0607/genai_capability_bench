@@ -1,0 +1,82 @@
+[
+  {
+    "task_id": "accuracy_history_001",
+    "capability": "answer_accuracy",
+    "category": "history",
+    "input_text": "Who was the first president of the United States?",
+    "expected_output": "George Washington",
+    "references": ["George Washington"]
+  },
+  {
+    "task_id": "accuracy_history_002",
+    "capability": "answer_accuracy",
+    "category": "history",
+    "input_text": "In what year did World War II end?",
+    "expected_output": "1945",
+    "references": ["1945"]
+  },
+  {
+    "task_id": "accuracy_science_001",
+    "capability": "answer_accuracy",
+    "category": "science",
+    "input_text": "What gas do plants primarily absorb from the atmosphere for photosynthesis?",
+    "expected_output": "carbon dioxide",
+    "references": ["carbon dioxide", "CO2"]
+  },
+  {
+    "task_id": "accuracy_science_002",
+    "capability": "answer_accuracy",
+    "category": "science",
+    "input_text": "What is the chemical symbol for gold?",
+    "expected_output": "Au",
+    "references": ["Au"]
+  },
+  {
+    "task_id": "accuracy_math_001",
+    "capability": "answer_accuracy",
+    "category": "math",
+    "input_text": "What is the square root of 144?",
+    "expected_output": "12",
+    "references": ["12"]
+  },
+  {
+    "task_id": "accuracy_literature_001",
+    "capability": "answer_accuracy",
+    "category": "literature",
+    "input_text": "Who wrote Pride and Prejudice?",
+    "expected_output": "Jane Austen",
+    "references": ["Jane Austen"]
+  },
+  {
+    "task_id": "accuracy_law_001",
+    "capability": "answer_accuracy",
+    "category": "law",
+    "input_text": "In the United States, what is the highest court?",
+    "expected_output": "Supreme Court of the United States",
+    "references": ["Supreme Court of the United States", "U.S. Supreme Court", "Supreme Court"]
+  },
+  {
+    "task_id": "accuracy_medicine_001",
+    "capability": "answer_accuracy",
+    "category": "medicine",
+    "input_text": "What organ pumps blood through the human body?",
+    "expected_output": "heart",
+    "references": ["heart", "the heart"]
+  },
+  {
+    "task_id": "accuracy_finance_001",
+    "capability": "answer_accuracy",
+    "category": "finance",
+    "input_text": "What does APR stand for in lending?",
+    "expected_output": "Annual Percentage Rate",
+    "references": ["Annual Percentage Rate"]
+  },
+  {
+    "task_id": "accuracy_geography_001",
+    "capability": "answer_accuracy",
+    "category": "geography",
+    "input_text": "What is the capital city of Japan?",
+    "expected_output": "Tokyo",
+    "references": ["Tokyo"]
+  }
+]
