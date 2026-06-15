@@ -33,21 +33,34 @@ def add_answer_accuracy_diagnostics(results_df: pd.DataFrame, pass_threshold: fl
     for key in ["exact_match", "contains_match", "token_f1", "tfidf_similarity"]:
         df[key] = [float(m.get(key, 0.0) or 0.0) for m in metric_rows]
 
+    df["semantic_blend_score"] = 0.45 * df["token_f1"] + 0.55 * df["tfidf_similarity"]
+    df["strict_score"] = df[["exact_match", "semantic_blend_score"]].max(axis=1)
+    df["contains_only_credit"] = (
+        (df["score"] >= pass_threshold)
+        & (df["contains_match"] >= 1.0)
+        & (df["exact_match"] < 1.0)
+        & (df["strict_score"] < pass_threshold)
+    )
     df["metric_spread"] = df[["exact_match", "contains_match", "token_f1", "tfidf_similarity"]].max(axis=1) - df[
         ["exact_match", "contains_match", "token_f1", "tfidf_similarity"]
     ].min(axis=1)
     df["metric_disagreement"] = df["metric_spread"] >= 0.5
 
-    def priority(score: float, disagreement: bool) -> str:
+    def priority(score: float, disagreement: bool, contains_only_credit: bool) -> str:
         if score < 0.4:
             return "High review priority"
         if score < pass_threshold:
             return "Near threshold"
+        if contains_only_credit:
+            return "Contains-only credit"
         if disagreement:
             return "Metric disagreement"
         return "Looks good"
 
-    df["review_priority"] = [priority(float(s), bool(d)) for s, d in zip(df["score"], df["metric_disagreement"])]
+    df["review_priority"] = [
+        priority(float(s), bool(d), bool(c))
+        for s, d, c in zip(df["score"], df["metric_disagreement"], df["contains_only_credit"])
+    ]
     df["flagged"] = df["review_priority"] != "Looks good"
     df["flag_reason"] = [
         _flag_reason(row, pass_threshold)
@@ -59,6 +72,8 @@ def add_answer_accuracy_diagnostics(results_df: pd.DataFrame, pass_threshold: fl
                 "token_f1",
                 "tfidf_similarity",
                 "metric_disagreement",
+                "contains_only_credit",
+                "strict_score",
                 "review_priority",
             ]
         ].to_dict(orient="records")
@@ -67,6 +82,7 @@ def add_answer_accuracy_diagnostics(results_df: pd.DataFrame, pass_threshold: fl
         {
             "High review priority": "Inspect manually; likely incorrect or missing expected answer.",
             "Near threshold": "Review with stronger semantic metric or judge model.",
+            "Contains-only credit": "Verify that the answer does not contain the right phrase inside an otherwise wrong response.",
             "Metric disagreement": "Check whether lexical metrics under/over-credit a paraphrase.",
             "Looks good": "No immediate review required.",
         }
@@ -79,6 +95,11 @@ def _flag_reason(row: dict[str, Any], pass_threshold: float) -> str:
         return f"Composite score {row['score']:.2f} is well below review threshold."
     if row["score"] < pass_threshold:
         return f"Composite score {row['score']:.2f} is below pass threshold {pass_threshold:.2f}."
+    if row["contains_only_credit"]:
+        return (
+            f"Composite score passed because the reference appeared in the response, "
+            f"but stricter score was {row['strict_score']:.2f}."
+        )
     if row["metric_disagreement"]:
         return (
             "Metrics disagree: exact/contains/F1/TF-IDF signals are far apart, "

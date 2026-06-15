@@ -211,6 +211,8 @@ def html_summary_report(run, target_label: str, judge_enabled: bool = False) -> 
     total = len(run.results_df)
     avg_score = float(run.results_df["score"].mean()) if total else 0.0
     pass_rate = float(run.results_df["passed"].mean()) if total else 0.0
+    reliability_notes = getattr(run, "reliability_notes", []) or []
+    reliability_rows = "".join(f"<li>{note}</li>" for note in reliability_notes)
     dataset_rows = "".join(
         f"<tr><td>{r.dataset_key}</td><td>{r.split}</td><td>{r.answer_accuracy_tasks}</td><td>{r.categories}</td></tr>"
         for r in run.dataset_manifest_df.itertuples(index=False)
@@ -241,6 +243,10 @@ def html_summary_report(run, target_label: str, judge_enabled: bool = False) -> 
         <tr><th align="left">Dataset</th><th align="left">Category</th><th align="right">N</th><th align="right">Avg Score</th><th align="right">Pass Rate</th></tr>
         {summary_rows}
       </table>
+      <h3>Benchmark Reliability Notes</h3>
+      <ul>
+        {reliability_rows or "<li>No reliability notes triggered.</li>"}
+      </ul>
       <p style="margin-top:14px;"><strong>Interpretation:</strong> {run.summary_text}</p>
     </div>
     """

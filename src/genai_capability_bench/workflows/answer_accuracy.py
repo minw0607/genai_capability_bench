@@ -60,6 +60,7 @@ class AnswerAccuracyRunResult:
     report_path: Path
     summary_text: str
     judge_enabled: bool = False
+    reliability_notes: list[str] = field(default_factory=list)
 
 
 def load_answer_accuracy_tasks(config: AnswerAccuracyRunConfig) -> tuple[list[EvalTask], pd.DataFrame]:
@@ -150,7 +151,14 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
             judge_model_name=config.judge_model_name,
             max_cases=config.judge_max_cases,
         )
+    reliability_notes = _build_reliability_notes(
+        results_df=results_df,
+        diagnostics_df=diagnostics_df,
+        dataset_manifest_df=dataset_manifest_df,
+    )
     summary_text = generate_summary(summary_df)
+    if reliability_notes:
+        summary_text = summary_text + " " + " ".join(reliability_notes)
 
     report = _build_markdown_report(
         run_id=run_id,
@@ -159,6 +167,7 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
         pass_threshold=pass_threshold,
         dataset_manifest_df=dataset_manifest_df,
         dataset_summary_df=dataset_summary_df,
+        reliability_notes=reliability_notes,
         summary_text=summary_text,
         judge_enabled=config.enable_judge_review,
     )
@@ -185,6 +194,7 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
         report_path=report_path,
         summary_text=summary_text,
         judge_enabled=config.enable_judge_review,
+        reliability_notes=reliability_notes,
     )
 
 
@@ -196,6 +206,7 @@ def _build_markdown_report(
     pass_threshold: float,
     dataset_manifest_df: pd.DataFrame,
     dataset_summary_df: pd.DataFrame,
+    reliability_notes: list[str],
     summary_text: str,
     judge_enabled: bool,
 ) -> str:
@@ -208,6 +219,7 @@ def _build_markdown_report(
         f"- `{row.dataset_key}` / `{row.category}`: avg score {row.avg_score:.2f}, pass rate {row.pass_rate:.2f}, n={row.n}"
         for row in dataset_summary_df.itertuples(index=False)
     )
+    reliability_lines = "\n".join(f"- {note}" for note in reliability_notes)
     return f"""# Answer Accuracy Evaluation Report
 
 **Run ID:** `{run_id}`  
@@ -224,6 +236,10 @@ def _build_markdown_report(
 ## Executive Summary
 
 {summary_text}
+
+## Benchmark Reliability Notes
+
+{reliability_lines or '- No reliability notes triggered.'}
 
 ## Dataset-Level Summary
 
@@ -244,6 +260,41 @@ def _build_markdown_report(
 Review high-priority, near-threshold, and metric-disagreement cases before using
 these results for model selection, validation, or governance evidence.
 """
+
+
+def _build_reliability_notes(
+    *,
+    results_df: pd.DataFrame,
+    diagnostics_df: pd.DataFrame,
+    dataset_manifest_df: pd.DataFrame,
+) -> list[str]:
+    """Generate transparent caveats about evidence strength for a run."""
+
+    notes: list[str] = []
+    n = len(results_df)
+    dataset_keys = set(dataset_manifest_df.get("dataset_key", pd.Series(dtype=str)).dropna().astype(str))
+    avg_score = float(results_df["score"].mean()) if n else 0.0
+    pass_rate = float(results_df["passed"].mean()) if n and "passed" in results_df else 0.0
+
+    if n < 30:
+        notes.append(
+            f"Only {n} tasks were evaluated; treat this as a smoke/demo run, not statistically meaningful evidence."
+        )
+    if dataset_keys == {"answer_accuracy_sample"}:
+        notes.append(
+            "The run used the local `answer_accuracy_sample` smoke set; use public benchmarks or a larger custom golden set before drawing model-quality conclusions."
+        )
+    if n and avg_score >= 0.99 and pass_rate >= 0.99 and n < 100:
+        notes.append(
+            "The run achieved near-perfect scores on fewer than 100 tasks; this should trigger benchmark-hardness review rather than be read as broad model mastery."
+        )
+    if "contains_only_credit" in diagnostics_df and bool(diagnostics_df["contains_only_credit"].any()):
+        count = int(diagnostics_df["contains_only_credit"].sum())
+        notes.append(
+            f"{count} case(s) passed primarily because the reference answer appeared inside a longer response; review these for over-credit risk."
+        )
+
+    return notes
 
 
 def _add_dataset_columns(results_df: pd.DataFrame) -> pd.DataFrame:
