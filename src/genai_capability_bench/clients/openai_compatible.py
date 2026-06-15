@@ -48,8 +48,9 @@ class OpenAICompatibleClient(ModelClient):
         params = {
             "model": self.spec.model,
             "messages": messages,
-            "max_tokens": self.spec.max_tokens,
         }
+        if self.spec.max_tokens is not None and self.spec.token_parameter:
+            params[self.spec.token_parameter] = self.spec.max_tokens
         if self.spec.temperature is not None:
             params["temperature"] = self.spec.temperature
 
@@ -65,4 +66,3 @@ class OpenAICompatibleClient(ModelClient):
             output_tokens=getattr(usage, "completion_tokens", None),
             raw=response,
         )
-

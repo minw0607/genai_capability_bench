@@ -12,5 +12,9 @@ models:
     provider: openai_compatible
     model: ${OPENAI_GENERATION_MODEL}
     api_version: ${OPENAI_API_VERSION}
-    temperature: 0.0
-    max_tokens: 1000
+    # Some GPT-5/reasoning deployments reject temperature and token controls.
+    # Set OPENAI_TEMPERATURE=omit, OPENAI_MAX_TOKENS=omit, and OPENAI_TOKEN_PARAMETER=
+    # in .env to skip them. Unresolved placeholders are also treated as omitted here.
+    temperature: ${OPENAI_TEMPERATURE}
+    max_tokens: ${OPENAI_MAX_TOKENS}
+    token_parameter: ${OPENAI_TOKEN_PARAMETER}

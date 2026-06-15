@@ -22,9 +22,18 @@ from genai_capability_bench.reporting.tables import summarize_results
 
 def load_config(path: str | Path) -> dict[str, Any]:
     load_dotenv()
+    _apply_env_alias("OPENAI_GENERATION_MODEL", "AGENT_MODEL")
+    _apply_env_alias("OPENAI_JUDGE_MODEL", "JUDGE_MODEL")
     with open(path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     return _expand_env_vars(config)
+
+
+def _apply_env_alias(primary: str, fallback: str) -> None:
+    """Populate a preferred env var from a legacy alias when present."""
+
+    if not os.environ.get(primary) and os.environ.get(fallback):
+        os.environ[primary] = os.environ[fallback]
 
 
 def _expand_env_vars(value):
@@ -53,6 +62,55 @@ def config_float(value: Any, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def config_optional_float(value: Any, default: float | None = None) -> float | None:
+    """Coerce optional float config values, treating null/none/placeholders as default."""
+
+    if value is None:
+        return default
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or stripped.lower() in {"none", "null", "omit"}:
+            return None
+        if stripped.startswith("${") and stripped.endswith("}"):
+            return default
+        value = stripped
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def config_optional_int(value: Any, default: int | None = None) -> int | None:
+    """Coerce optional integer config values, treating null/none/placeholders as default."""
+
+    if value is None:
+        return default
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or stripped.lower() in {"none", "null", "omit"}:
+            return None
+        if stripped.startswith("${") and stripped.endswith("}"):
+            return default
+        value = stripped
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def config_optional_str(value: Any, default: str | None = None) -> str | None:
+    """Coerce optional string config values, treating null/none/placeholders as default."""
+
+    if value is None:
+        return default
+    stripped = str(value).strip()
+    if not stripped or stripped.lower() in {"none", "null", "omit"}:
+        return None
+    if stripped.startswith("${") and stripped.endswith("}"):
+        return default
+    return stripped
 
 
 def load_tasks(path: str | Path) -> list[EvalTask]:
@@ -87,14 +145,18 @@ def load_tasks(path: str | Path) -> list[EvalTask]:
 def parse_models(config: dict[str, Any]) -> list[ModelSpec]:
     models = []
     for row in config.get("models", []):
+        temperature = row["temperature"] if "temperature" in row else 0.0
+        max_tokens = row["max_tokens"] if "max_tokens" in row else 1000
+        token_parameter = row["token_parameter"] if "token_parameter" in row else "max_tokens"
         models.append(
             ModelSpec(
                 name=row["name"],
                 provider=row.get("provider", "mock"),
                 model=row.get("model", "mock-model"),
                 api_version=row.get("api_version"),
-                temperature=row.get("temperature", 0.0),
-                max_tokens=int(row.get("max_tokens", 1000)),
+                temperature=config_optional_float(temperature, None),
+                max_tokens=config_optional_int(max_tokens, None),
+                token_parameter=config_optional_str(token_parameter, None),
                 metadata=dict(row.get("metadata") or {}),
             )
         )

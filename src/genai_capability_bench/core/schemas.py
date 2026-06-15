@@ -29,7 +29,8 @@ class ModelSpec:
     model: str = "mock-model"
     api_version: str | None = None
     temperature: float | None = 0.0
-    max_tokens: int = 1000
+    max_tokens: int | None = 1000
+    token_parameter: str | None = "max_tokens"
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -108,4 +109,3 @@ class RunMetadata:
         data = asdict(self)
         data["capabilities"] = [c.value for c in self.capabilities]
         return data
-
