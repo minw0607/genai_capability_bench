@@ -16,13 +16,17 @@ def tfidf_similarity(prediction: str, reference: str) -> float:
 
     if not prediction or not reference:
         return 0.0
-    vectorizer = TfidfVectorizer().fit([prediction, reference])
-    matrix = vectorizer.transform([prediction, reference])
-    return float(cosine_similarity(matrix[0], matrix[1])[0][0])
+    try:
+        vectorizer = TfidfVectorizer(token_pattern=r"(?u)\b\w+\b").fit([prediction, reference])
+        matrix = vectorizer.transform([prediction, reference])
+        return float(cosine_similarity(matrix[0], matrix[1])[0][0])
+    except ValueError:
+        # Empty or punctuation-only text can still reach this point after the
+        # vectorizer tokenization step. Treat it as no semantic similarity.
+        return 0.0
 
 
 def best_tfidf_similarity(prediction: str, references: list[str]) -> float:
     if not references:
         return 0.0
     return max(tfidf_similarity(prediction, ref) for ref in references)
-

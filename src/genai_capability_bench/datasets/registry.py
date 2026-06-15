@@ -232,6 +232,7 @@ def materialize_dataset(
     if spec.source_type == "local":
         source = repo_root / str(spec.local_path)
         tasks = load_tasks(source)
+        tasks = [_enrich_choice_references(task) for task in tasks]
         return _sample(tasks, sample_size, seed), source
 
     if spec.source_type == "custom":
@@ -239,13 +240,15 @@ def materialize_dataset(
             raise ValueError("custom_path is required when key='custom'")
         source = Path(custom_path)
         tasks = load_tasks(source)
+        tasks = [_enrich_choice_references(task) for task in tasks]
         return _sample(tasks, sample_size, seed), source
 
     if spec.source_type != "huggingface":
         raise ValueError(f"Unsupported source_type for {spec.key}: {spec.source_type}")
 
     if cache_path.exists() and not refresh_cache:
-        return load_tasks(cache_path), cache_path
+        tasks = [_enrich_choice_references(task) for task in load_tasks(cache_path)]
+        return tasks, cache_path
 
     if not download_if_missing:
         raise FileNotFoundError(
@@ -427,6 +430,54 @@ def _choice_text(choices: Any, answer_key: Any = None) -> tuple[str, str | None]
     return formatted, answer
 
 
+def _choice_answer_label(choices: Any, answer_key: Any = None) -> str | None:
+    """Return the displayed multiple-choice label for an answer key."""
+
+    if answer_key is None:
+        return None
+    labels: list[str] = []
+    if isinstance(choices, dict):
+        labels = [str(x) for x in choices.get("label", [])]
+    elif isinstance(choices, list):
+        labels = [chr(ord("A") + i) for i in range(len(choices))]
+
+    key = str(answer_key)
+    if key.isdigit():
+        idx = int(key)
+        if 0 <= idx < len(labels):
+            return labels[idx]
+    if key in labels:
+        return key
+    if len(key) == 1 and key.upper() in labels:
+        return key.upper()
+    return None
+
+
+def _choice_references(answer_text: str, choices: Any, answer_key: Any = None) -> list[str]:
+    """Build references for multiple-choice tasks using answer text and displayed label."""
+
+    refs = [answer_text]
+    label = _choice_answer_label(choices, answer_key)
+    if label:
+        refs.append(label)
+    elif answer_key is not None:
+        refs.append(str(answer_key))
+    return list(dict.fromkeys(refs))
+
+
+def _enrich_choice_references(task: EvalTask) -> EvalTask:
+    """Add displayed option labels to cached multiple-choice tasks when possible."""
+
+    choices = task.metadata.get("choices") if isinstance(task.metadata, dict) else None
+    answer_key = task.metadata.get("answer_key") if isinstance(task.metadata, dict) else None
+    if not choices or answer_key is None or not task.expected_output:
+        return task
+    task.references = list(
+        dict.fromkeys([*task.references, *_choice_references(task.expected_output, choices, answer_key)])
+    )
+    return task
+
+
 @_normalizer("already_normalized")
 def _already_normalized(row: dict[str, Any], idx: int) -> EvalTask | None:
     return EvalTask(
@@ -458,7 +509,7 @@ def _normalize_mmlu(row: dict[str, Any], idx: int) -> EvalTask | None:
         input_text=input_text,
         expected_output=answer_text,
         category=subject,
-        references=[answer_text, str(answer_key)],
+        references=_choice_references(answer_text, choices, answer_key),
         metadata={"source_dataset": "mmlu", "choices": choices, "answer_key": answer_key},
     )
 
@@ -527,7 +578,7 @@ def _normalize_arc(row: dict[str, Any], idx: int) -> EvalTask | None:
         input_text=input_text,
         expected_output=answer_text,
         category="arc_science",
-        references=[answer_text, str(row.get("answerKey"))],
+        references=_choice_references(answer_text, row.get("choices"), row.get("answerKey")),
         metadata={"source_dataset": "arc", "choices": row.get("choices"), "answer_key": row.get("answerKey")},
     )
 
