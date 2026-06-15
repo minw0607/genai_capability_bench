@@ -39,6 +39,22 @@ def _expand_env_vars(value):
     return value
 
 
+def config_float(value: Any, default: float) -> float:
+    """Coerce config values to float with fallback for missing env placeholders."""
+
+    if value is None:
+        return default
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or (stripped.startswith("${") and stripped.endswith("}")):
+            return default
+        value = stripped
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def load_tasks(path: str | Path) -> list[EvalTask]:
     path = Path(path)
     if path.suffix.lower() == ".jsonl":
@@ -102,7 +118,10 @@ def run_from_config(config_path: str | Path) -> Path:
         for task in tasks:
             evaluator = get_evaluator(
                 task.capability,
-                pass_threshold=float(thresholds.get(task.capability.value, config.get("default_pass_threshold", 0.7))),
+                pass_threshold=config_float(
+                    thresholds.get(task.capability.value, config.get("default_pass_threshold")),
+                    0.7,
+                ),
             )
             result = evaluator.evaluate_task(run_id, task, model, clients[model.name])
             results.append(result)

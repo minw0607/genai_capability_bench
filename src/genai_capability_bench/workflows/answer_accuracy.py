@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 
 from genai_capability_bench.capabilities.registry import get_evaluator
 from genai_capability_bench.clients.factory import create_client
-from genai_capability_bench.core.runner import load_config, parse_models
+from genai_capability_bench.core.runner import config_float, load_config, parse_models
 from genai_capability_bench.core.schemas import Capability, EvalTask, ModelSpec
 from genai_capability_bench.datasets import materialize_dataset
 from genai_capability_bench.reporting.diagnostics import add_answer_accuracy_diagnostics
@@ -118,7 +118,7 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
     pass_threshold = (
         float(config.pass_threshold)
         if config.pass_threshold is not None
-        else float(model_config.get("default_pass_threshold", 0.7))
+        else config_float(model_config.get("default_pass_threshold"), 0.7)
     )
 
     tasks, dataset_manifest_df = load_answer_accuracy_tasks(config)
