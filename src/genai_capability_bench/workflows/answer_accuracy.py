@@ -45,6 +45,9 @@ class AnswerAccuracyRunConfig:
     judge_max_cases: int = 10
     max_tasks_per_run: int | None = 500
     allow_full_public_dataset: bool = False
+    checkpoint_every: int = 50
+    checkpoint_dir: Path | None = None
+    resume_from_checkpoint: Path | None = None
 
 
 @dataclass
@@ -60,6 +63,7 @@ class AnswerAccuracyRunResult:
     diagnostics_df: pd.DataFrame
     dataset_manifest_df: pd.DataFrame
     report_path: Path
+    checkpoint_path: Path | None
     summary_text: str
     judge_enabled: bool = False
     reliability_notes: list[str] = field(default_factory=list)
@@ -136,9 +140,10 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
     )
 
     tasks, dataset_manifest_df = load_answer_accuracy_tasks(config)
-    if config.max_tasks_per_run is not None and len(tasks) > config.max_tasks_per_run:
+    total_expected = len(tasks) * len(models)
+    if config.max_tasks_per_run is not None and total_expected > config.max_tasks_per_run:
         raise ValueError(
-            f"Refusing to evaluate {len(tasks):,} tasks because max_tasks_per_run="
+            f"Refusing to evaluate {total_expected:,} model calls because max_tasks_per_run="
             f"{config.max_tasks_per_run:,}. Reduce SAMPLE_SIZE_PER_DATASET / DATASET_KEYS, "
             "or intentionally raise max_tasks_per_run for a planned large benchmark."
         )
@@ -147,15 +152,74 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
     output_root = config.output_root or config.repo_root / "outputs" / "runs"
     run_dir = output_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_dir = config.checkpoint_dir or output_root / "_checkpoints" / run_id
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = checkpoint_dir / "results_checkpoint.jsonl"
+    checkpoint_state_path = checkpoint_dir / "checkpoint_state.json"
+    resumed_results = _load_checkpoint_results(config.resume_from_checkpoint)
+    completed_keys = {_result_checkpoint_key(row) for row in resumed_results}
+    completed_keys.discard("")
+    if resumed_results:
+        _write_checkpoint_snapshot(
+            checkpoint_path=checkpoint_path,
+            checkpoint_state_path=checkpoint_state_path,
+            results=resumed_results,
+            run_id=run_id,
+            total_expected=len(tasks) * len(models),
+            completed=len(completed_keys),
+            dataset_manifest_df=dataset_manifest_df,
+            source_checkpoint=config.resume_from_checkpoint,
+        )
 
-    results: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = [_with_run_id(row, run_id) for row in resumed_results]
+    newly_completed = 0
+    checkpoint_buffer: list[dict[str, Any]] = []
     for model in models:
         client = create_client(model)
         evaluator = get_evaluator(Capability.ANSWER_ACCURACY, pass_threshold=pass_threshold)
-        iterator = tqdm(tasks, desc=f"Evaluating {model.name}", disable=not show_progress)
+        pending_tasks = [task for task in tasks if _task_checkpoint_key(model, task) not in completed_keys]
+        iterator = tqdm(
+            pending_tasks,
+            desc=f"Evaluating {model.name}",
+            disable=not show_progress,
+            initial=total_expected - len(pending_tasks) if len(models) == 1 else 0,
+            total=total_expected if len(models) == 1 else len(pending_tasks),
+            unit="sample",
+            dynamic_ncols=True,
+            bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{percentage:3.0f}%] elapsed={elapsed} remaining={remaining}",
+        )
         for task in iterator:
             result = evaluator.evaluate_task(run_id, task, model, client)
-            results.append(result.to_dict())
+            row = result.to_dict()
+            results.append(row)
+            checkpoint_buffer.append(row)
+            completed_keys.add(_result_checkpoint_key(row))
+            newly_completed += 1
+            if newly_completed % max(config.checkpoint_every, 1) == 0:
+                _append_checkpoint_rows(checkpoint_path, checkpoint_buffer)
+                checkpoint_buffer = []
+                _write_checkpoint_state(
+                    checkpoint_path=checkpoint_path,
+                    checkpoint_state_path=checkpoint_state_path,
+                    run_id=run_id,
+                    total_expected=total_expected,
+                    completed=len(completed_keys),
+                    dataset_manifest_df=dataset_manifest_df,
+                    source_checkpoint=config.resume_from_checkpoint,
+                )
+                iterator.set_postfix_str(f"checkpoint saved: {len(completed_keys)}/{total_expected}")
+
+    if checkpoint_buffer:
+        _append_checkpoint_rows(checkpoint_path, checkpoint_buffer)
+    _write_checkpoint_state(
+        checkpoint_path=checkpoint_path,
+        checkpoint_state_path=checkpoint_state_path,
+        run_id=run_id,
+        total_expected=total_expected,
+        completed=len(completed_keys),
+        dataset_manifest_df=dataset_manifest_df,
+        source_checkpoint=config.resume_from_checkpoint,
+    )
 
     results_df = pd.DataFrame(results)
     results_df = _add_dataset_columns(results_df)
@@ -187,6 +251,7 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
         dataset_manifest_df=dataset_manifest_df,
         dataset_summary_df=dataset_summary_df,
         reliability_notes=reliability_notes,
+        checkpoint_path=checkpoint_path,
         summary_text=summary_text,
         judge_enabled=config.enable_judge_review,
     )
@@ -211,6 +276,7 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
         diagnostics_df=diagnostics_df,
         dataset_manifest_df=dataset_manifest_df,
         report_path=report_path,
+        checkpoint_path=checkpoint_path,
         summary_text=summary_text,
         judge_enabled=config.enable_judge_review,
         reliability_notes=reliability_notes,
@@ -226,6 +292,7 @@ def _build_markdown_report(
     dataset_manifest_df: pd.DataFrame,
     dataset_summary_df: pd.DataFrame,
     reliability_notes: list[str],
+    checkpoint_path: Path | None,
     summary_text: str,
     judge_enabled: bool,
 ) -> str:
@@ -247,6 +314,7 @@ def _build_markdown_report(
 **Tasks evaluated:** {len(tasks)}  
 **Pass threshold:** {pass_threshold:.2f}
 **Judge review:** {"Enabled" if judge_enabled else "Disabled"}
+**Checkpoint:** `{checkpoint_path}`
 
 ## Dataset Manifest
 
@@ -273,12 +341,136 @@ def _build_markdown_report(
 - `leaderboard.csv`: model/capability leaderboard
 - `diagnostics.csv`: review-priority and metric-disagreement diagnostics
 - `dataset_manifest.csv`: dataset source/cache record
+- `{checkpoint_path}`: resumable JSONL checkpoint for interrupted long runs
 
 ## Recommended Review
 
 Review high-priority, near-threshold, and metric-disagreement cases before using
 these results for model selection, validation, or governance evidence.
 """
+
+
+def _checkpoint_results_file(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    path = Path(path)
+    if path.is_dir():
+        return path / "results_checkpoint.jsonl"
+    return path
+
+
+def _load_checkpoint_results(path: Path | None) -> list[dict[str, Any]]:
+    """Load checkpoint rows from a JSONL, JSON, CSV, or checkpoint directory."""
+
+    checkpoint_file = _checkpoint_results_file(path)
+    if checkpoint_file is None or not checkpoint_file.exists():
+        return []
+
+    if checkpoint_file.suffix.lower() == ".jsonl":
+        rows = []
+        for line in checkpoint_file.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                rows.append(json.loads(line))
+        return rows
+
+    if checkpoint_file.suffix.lower() == ".json":
+        rows = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+        return rows if isinstance(rows, list) else rows.get("results", [])
+
+    if checkpoint_file.suffix.lower() == ".csv":
+        return pd.read_csv(checkpoint_file).to_dict(orient="records")
+
+    raise ValueError(f"Unsupported checkpoint file type: {checkpoint_file.suffix}")
+
+
+def _write_checkpoint_snapshot(
+    *,
+    checkpoint_path: Path,
+    checkpoint_state_path: Path,
+    results: list[dict[str, Any]],
+    run_id: str,
+    total_expected: int,
+    completed: int,
+    dataset_manifest_df: pd.DataFrame,
+    source_checkpoint: Path | None,
+) -> None:
+    """Write a resumable checkpoint snapshot for long notebook runs."""
+
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    with checkpoint_path.open("w", encoding="utf-8") as f:
+        for row in results:
+            f.write(json.dumps(row, default=str) + "\n")
+    _write_checkpoint_state(
+        checkpoint_path=checkpoint_path,
+        checkpoint_state_path=checkpoint_state_path,
+        run_id=run_id,
+        total_expected=total_expected,
+        completed=completed,
+        dataset_manifest_df=dataset_manifest_df,
+        source_checkpoint=source_checkpoint,
+    )
+
+
+def _append_checkpoint_rows(checkpoint_path: Path, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    with checkpoint_path.open("a", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, default=str) + "\n")
+
+
+def _write_checkpoint_state(
+    *,
+    checkpoint_path: Path,
+    checkpoint_state_path: Path,
+    run_id: str,
+    total_expected: int,
+    completed: int,
+    dataset_manifest_df: pd.DataFrame,
+    source_checkpoint: Path | None,
+) -> None:
+    progress = completed / total_expected if total_expected else 0.0
+    state = {
+        "run_id": run_id,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "checkpoint_path": str(checkpoint_path),
+        "source_checkpoint": str(source_checkpoint) if source_checkpoint else None,
+        "completed": completed,
+        "total_expected": total_expected,
+        "progress_pct": round(progress * 100, 2),
+        "dataset_manifest": dataset_manifest_df.to_dict(orient="records"),
+    }
+    checkpoint_state_path.write_text(json.dumps(state, indent=2, default=str), encoding="utf-8")
+
+
+def _with_run_id(row: dict[str, Any], run_id: str) -> dict[str, Any]:
+    out = dict(row)
+    out["run_id"] = run_id
+    return out
+
+
+def _task_checkpoint_key(model: ModelSpec, task: EvalTask) -> str:
+    dataset_key = task.metadata.get("dataset_key", "") if isinstance(task.metadata, dict) else ""
+    return f"{model.name}::{dataset_key}::{task.task_id}"
+
+
+def _result_checkpoint_key(row: dict[str, Any]) -> str:
+    model_name = str(row.get("model_name", ""))
+    task_id = str(row.get("task_id", ""))
+    dataset_key = str(row.get("dataset_key") or "")
+    if not dataset_key:
+        metadata = row.get("metadata")
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except json.JSONDecodeError:
+                metadata = {}
+        if isinstance(metadata, dict):
+            dataset_key = str(metadata.get("dataset_key", ""))
+    if not model_name or not task_id:
+        return ""
+    return f"{model_name}::{dataset_key}::{task_id}"
 
 
 def _build_reliability_notes(
