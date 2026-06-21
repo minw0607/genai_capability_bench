@@ -15,7 +15,7 @@ from genai_capability_bench.capabilities.registry import get_evaluator
 from genai_capability_bench.clients.factory import create_client
 from genai_capability_bench.core.runner import config_float, load_config, parse_models
 from genai_capability_bench.core.schemas import Capability, EvalTask, ModelSpec
-from genai_capability_bench.datasets import materialize_dataset
+from genai_capability_bench.datasets import get_dataset_spec, materialize_dataset
 from genai_capability_bench.reporting.diagnostics import add_answer_accuracy_diagnostics
 from genai_capability_bench.reporting.executive_summary import generate_summary
 from genai_capability_bench.reporting.tables import capability_leaderboard, summarize_results
@@ -43,6 +43,8 @@ class AnswerAccuracyRunConfig:
     enable_judge_review: bool = False
     judge_model_name: str | None = None
     judge_max_cases: int = 10
+    max_tasks_per_run: int | None = 500
+    allow_full_public_dataset: bool = False
 
 
 @dataclass
@@ -70,6 +72,17 @@ def load_answer_accuracy_tasks(config: AnswerAccuracyRunConfig) -> tuple[list[Ev
     manifest_rows: list[dict[str, Any]] = []
 
     for dataset_key in config.dataset_keys:
+        spec = get_dataset_spec(dataset_key)
+        if (
+            spec.source_type == "huggingface"
+            and config.sample_size_per_dataset is None
+            and not config.allow_full_public_dataset
+        ):
+            raise ValueError(
+                f"Refusing to load the full public dataset split for '{dataset_key}'. "
+                "Set sample_size_per_dataset to a bounded value such as 10, 25, or 100. "
+                "If you intentionally want the full split, set allow_full_public_dataset=True."
+            )
         split = config.dataset_splits.get(dataset_key)
         tasks, cache_path = materialize_dataset(
             dataset_key,
@@ -123,6 +136,12 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
     )
 
     tasks, dataset_manifest_df = load_answer_accuracy_tasks(config)
+    if config.max_tasks_per_run is not None and len(tasks) > config.max_tasks_per_run:
+        raise ValueError(
+            f"Refusing to evaluate {len(tasks):,} tasks because max_tasks_per_run="
+            f"{config.max_tasks_per_run:,}. Reduce SAMPLE_SIZE_PER_DATASET / DATASET_KEYS, "
+            "or intentionally raise max_tasks_per_run for a planned large benchmark."
+        )
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_id = f"{config.run_id_prefix}_{timestamp}"
     output_root = config.output_root or config.repo_root / "outputs" / "runs"
