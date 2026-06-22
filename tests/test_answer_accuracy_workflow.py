@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import json
+
 from genai_capability_bench.workflows.answer_accuracy import (
     AnswerAccuracyRunConfig,
     load_answer_accuracy_tasks,
@@ -75,6 +77,7 @@ def test_answer_accuracy_workflow_writes_checkpoint(tmp_path):
         sample_size_per_dataset=2,
         output_root=tmp_path,
         checkpoint_every=1,
+        run_id_prefix="first_checkpoint",
     )
 
     result = run_answer_accuracy_workflow(config, show_progress=False)
@@ -111,3 +114,79 @@ def test_answer_accuracy_workflow_resumes_from_checkpoint(tmp_path):
     assert len(resumed.results_df) == 2
     assert set(first.results_df["task_id"]) == set(resumed.results_df["task_id"])
     assert all(resumed.results_df["run_id"] == resumed.run_id)
+
+
+def test_answer_accuracy_workflow_auto_resumes_latest_compatible_checkpoint(tmp_path):
+    repo_root = Path(".").resolve()
+    config = AnswerAccuracyRunConfig(
+        repo_root=repo_root,
+        model_config_path=repo_root / "configs" / "eval_core_demo.yaml",
+        dataset_keys=["answer_accuracy_sample"],
+        sample_size_per_dataset=2,
+        output_root=tmp_path,
+        checkpoint_every=1,
+    )
+    first = run_answer_accuracy_workflow(config, show_progress=False)
+
+    resumed = run_answer_accuracy_workflow(config, show_progress=False)
+
+    assert resumed.resumed_from_checkpoint == first.checkpoint_path
+    assert len(resumed.results_df) == 2
+    assert set(first.results_df["task_id"]) == set(resumed.results_df["task_id"])
+
+
+def test_answer_accuracy_workflow_preserves_other_compatible_method_checkpoints(tmp_path):
+    repo_root = Path(".").resolve()
+    first_config = AnswerAccuracyRunConfig(
+        repo_root=repo_root,
+        model_config_path=repo_root / "configs" / "eval_core_demo.yaml",
+        dataset_keys=["answer_accuracy_sample"],
+        sample_size_per_dataset=2,
+        output_root=tmp_path,
+        checkpoint_every=1,
+    )
+    first = run_answer_accuracy_workflow(first_config, show_progress=False)
+    first_checkpoint_dir = first.checkpoint_path.parent
+
+    second_config = AnswerAccuracyRunConfig(
+        repo_root=repo_root,
+        model_config_path=repo_root / "configs" / "eval_core_demo.yaml",
+        dataset_keys=["answer_accuracy_sample"],
+        sample_size_per_dataset=3,
+        output_root=tmp_path,
+        checkpoint_every=1,
+        run_id_prefix="second_checkpoint",
+    )
+    run_answer_accuracy_workflow(second_config, show_progress=False)
+
+    assert first_checkpoint_dir.exists()
+
+
+def test_answer_accuracy_workflow_removes_stale_method_checkpoints(tmp_path):
+    stale_checkpoint_dir = tmp_path / "_checkpoints" / "old_method_run"
+    stale_checkpoint_dir.mkdir(parents=True)
+    stale_checkpoint_dir.joinpath("results_checkpoint.jsonl").write_text("[]", encoding="utf-8")
+    stale_checkpoint_dir.joinpath("checkpoint_state.json").write_text(
+        json.dumps(
+            {
+                "run_id": "old_method_run",
+                "method_version": "old_method_v1",
+                "benchmark_fingerprint": "stale",
+                "checkpoint_path": str(stale_checkpoint_dir / "results_checkpoint.jsonl"),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    repo_root = Path(".").resolve()
+    config = AnswerAccuracyRunConfig(
+        repo_root=repo_root,
+        model_config_path=repo_root / "configs" / "eval_core_demo.yaml",
+        dataset_keys=["answer_accuracy_sample"],
+        sample_size_per_dataset=2,
+        output_root=tmp_path,
+        checkpoint_every=1,
+    )
+    run_answer_accuracy_workflow(config, show_progress=False)
+
+    assert not stale_checkpoint_dir.exists()

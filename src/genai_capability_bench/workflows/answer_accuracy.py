@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +22,9 @@ from genai_capability_bench.reporting.diagnostics import add_answer_accuracy_dia
 from genai_capability_bench.reporting.executive_summary import generate_summary
 from genai_capability_bench.reporting.tables import capability_leaderboard, summarize_results
 from genai_capability_bench.metrics.llm_judge import judge_with_rubric
+
+
+ANSWER_ACCURACY_METHOD_VERSION = "answer_accuracy_profile_metrics_v3_20260622"
 
 
 @dataclass
@@ -48,6 +53,8 @@ class AnswerAccuracyRunConfig:
     checkpoint_every: int = 50
     checkpoint_dir: Path | None = None
     resume_from_checkpoint: Path | None = None
+    auto_resume_from_latest: bool = True
+    cleanup_incompatible_checkpoints: bool = True
 
 
 @dataclass
@@ -64,6 +71,7 @@ class AnswerAccuracyRunResult:
     dataset_manifest_df: pd.DataFrame
     report_path: Path
     checkpoint_path: Path | None
+    resumed_from_checkpoint: Path | None
     summary_text: str
     judge_enabled: bool = False
     reliability_notes: list[str] = field(default_factory=list)
@@ -154,13 +162,32 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_id = f"{config.run_id_prefix}_{timestamp}"
     output_root = config.output_root or config.repo_root / "outputs" / "runs"
+    checkpoint_root = output_root / "_checkpoints"
+    checkpoint_fingerprint = _build_checkpoint_fingerprint(
+        config=config,
+        models=models,
+        pass_threshold=pass_threshold,
+        dataset_manifest_df=dataset_manifest_df,
+    )
+    if config.cleanup_incompatible_checkpoints:
+        _cleanup_incompatible_checkpoints(checkpoint_root, checkpoint_fingerprint)
+
+    resume_source = config.resume_from_checkpoint
+    if resume_source is not None and not _checkpoint_is_compatible(resume_source, checkpoint_fingerprint):
+        raise ValueError(
+            "The requested checkpoint is not compatible with the current dataset/model/scoring configuration. "
+            "Re-run the evaluation or choose a checkpoint created with the same method version and benchmark settings."
+        )
+    if resume_source is None and config.auto_resume_from_latest:
+        resume_source = _find_latest_compatible_checkpoint(checkpoint_root, checkpoint_fingerprint)
+
     run_dir = output_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_dir = config.checkpoint_dir or output_root / "_checkpoints" / run_id
+    checkpoint_dir = config.checkpoint_dir or checkpoint_root / run_id
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = checkpoint_dir / "results_checkpoint.jsonl"
     checkpoint_state_path = checkpoint_dir / "checkpoint_state.json"
-    resumed_results = _load_checkpoint_results(config.resume_from_checkpoint)
+    resumed_results = _load_checkpoint_results(resume_source)
     completed_keys = {_result_checkpoint_key(row) for row in resumed_results}
     completed_keys.discard("")
     if resumed_results:
@@ -172,7 +199,8 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
             total_expected=len(tasks) * len(models),
             completed=len(completed_keys),
             dataset_manifest_df=dataset_manifest_df,
-            source_checkpoint=config.resume_from_checkpoint,
+            source_checkpoint=resume_source,
+            checkpoint_fingerprint=checkpoint_fingerprint,
         )
 
     results: list[dict[str, Any]] = [_with_run_id(row, run_id) for row in resumed_results]
@@ -209,7 +237,8 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
                     total_expected=total_expected,
                     completed=len(completed_keys),
                     dataset_manifest_df=dataset_manifest_df,
-                    source_checkpoint=config.resume_from_checkpoint,
+                    source_checkpoint=resume_source,
+                    checkpoint_fingerprint=checkpoint_fingerprint,
                 )
                 iterator.set_postfix_str(f"checkpoint saved: {len(completed_keys)}/{total_expected}")
 
@@ -222,7 +251,8 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
         total_expected=total_expected,
         completed=len(completed_keys),
         dataset_manifest_df=dataset_manifest_df,
-        source_checkpoint=config.resume_from_checkpoint,
+        source_checkpoint=resume_source,
+        checkpoint_fingerprint=checkpoint_fingerprint,
     )
 
     results_df = pd.DataFrame(results)
@@ -281,6 +311,7 @@ def run_answer_accuracy_workflow(config: AnswerAccuracyRunConfig, show_progress:
         dataset_manifest_df=dataset_manifest_df,
         report_path=report_path,
         checkpoint_path=checkpoint_path,
+        resumed_from_checkpoint=resume_source,
         summary_text=summary_text,
         judge_enabled=config.enable_judge_review,
         reliability_notes=reliability_notes,
@@ -365,6 +396,15 @@ def _checkpoint_results_file(path: Path | None) -> Path | None:
     return path
 
 
+def _checkpoint_state_file(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    path = Path(path)
+    if path.is_dir():
+        return path / "checkpoint_state.json"
+    return path.parent / "checkpoint_state.json"
+
+
 def _load_checkpoint_results(path: Path | None) -> list[dict[str, Any]]:
     """Load checkpoint rows from a JSONL, JSON, CSV, or checkpoint directory."""
 
@@ -389,6 +429,103 @@ def _load_checkpoint_results(path: Path | None) -> list[dict[str, Any]]:
     raise ValueError(f"Unsupported checkpoint file type: {checkpoint_file.suffix}")
 
 
+def _build_checkpoint_fingerprint(
+    *,
+    config: AnswerAccuracyRunConfig,
+    models: list[ModelSpec],
+    pass_threshold: float,
+    dataset_manifest_df: pd.DataFrame,
+) -> dict[str, Any]:
+    """Build a compatibility fingerprint for checkpoint reuse."""
+
+    selected_categories = (
+        config.selected_categories
+        if isinstance(config.selected_categories, str)
+        else sorted(str(x) for x in config.selected_categories)
+    )
+    payload = {
+        "method_version": ANSWER_ACCURACY_METHOD_VERSION,
+        "model_config_path": str(Path(config.model_config_path).resolve()),
+        "models": [
+            {
+                "name": model.name,
+                "provider": model.provider,
+                "model": model.model,
+                "api_version": model.api_version,
+            }
+            for model in models
+        ],
+        "dataset_keys": list(config.dataset_keys),
+        "dataset_splits": dict(sorted(config.dataset_splits.items())),
+        "sample_size_per_dataset": config.sample_size_per_dataset,
+        "selected_categories": selected_categories,
+        "custom_dataset_path": str(config.custom_dataset_path) if config.custom_dataset_path else None,
+        "random_seed": config.random_seed,
+        "pass_threshold": pass_threshold,
+        "dataset_manifest": dataset_manifest_df.fillna("").to_dict(orient="records"),
+    }
+    canonical = json.dumps(payload, sort_keys=True, default=str)
+    return {
+        "method_version": ANSWER_ACCURACY_METHOD_VERSION,
+        "fingerprint": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        "payload": payload,
+    }
+
+
+def _load_checkpoint_state(path: Path | None) -> dict[str, Any]:
+    state_file = _checkpoint_state_file(path)
+    if state_file is None or not state_file.exists():
+        return {}
+    try:
+        return json.loads(state_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _checkpoint_is_compatible(path: Path | None, checkpoint_fingerprint: dict[str, Any]) -> bool:
+    state = _load_checkpoint_state(path)
+    return (
+        state.get("method_version") == checkpoint_fingerprint["method_version"]
+        and state.get("benchmark_fingerprint") == checkpoint_fingerprint["fingerprint"]
+    )
+
+
+def _find_latest_compatible_checkpoint(
+    checkpoint_root: Path,
+    checkpoint_fingerprint: dict[str, Any],
+) -> Path | None:
+    if not checkpoint_root.exists():
+        return None
+    candidates = []
+    for state_file in checkpoint_root.glob("*/checkpoint_state.json"):
+        state = _load_checkpoint_state(state_file)
+        if (
+            state.get("method_version") == checkpoint_fingerprint["method_version"]
+            and state.get("benchmark_fingerprint") == checkpoint_fingerprint["fingerprint"]
+        ):
+            checkpoint_path = Path(state.get("checkpoint_path", state_file.parent / "results_checkpoint.jsonl"))
+            if checkpoint_path.exists():
+                candidates.append((state_file.stat().st_mtime, checkpoint_path))
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda item: item[0])[-1][1]
+
+
+def _cleanup_incompatible_checkpoints(checkpoint_root: Path, checkpoint_fingerprint: dict[str, Any]) -> None:
+    if not checkpoint_root.exists():
+        return
+    for checkpoint_dir in checkpoint_root.iterdir():
+        if not checkpoint_dir.is_dir():
+            continue
+        state_file = checkpoint_dir / "checkpoint_state.json"
+        state = _load_checkpoint_state(state_file)
+        if not state:
+            shutil.rmtree(checkpoint_dir, ignore_errors=True)
+            continue
+        if state.get("method_version") != checkpoint_fingerprint["method_version"]:
+            shutil.rmtree(checkpoint_dir, ignore_errors=True)
+
+
 def _write_checkpoint_snapshot(
     *,
     checkpoint_path: Path,
@@ -399,6 +536,7 @@ def _write_checkpoint_snapshot(
     completed: int,
     dataset_manifest_df: pd.DataFrame,
     source_checkpoint: Path | None,
+    checkpoint_fingerprint: dict[str, Any],
 ) -> None:
     """Write a resumable checkpoint snapshot for long notebook runs."""
 
@@ -414,6 +552,7 @@ def _write_checkpoint_snapshot(
         completed=completed,
         dataset_manifest_df=dataset_manifest_df,
         source_checkpoint=source_checkpoint,
+        checkpoint_fingerprint=checkpoint_fingerprint,
     )
 
 
@@ -435,6 +574,7 @@ def _write_checkpoint_state(
     completed: int,
     dataset_manifest_df: pd.DataFrame,
     source_checkpoint: Path | None,
+    checkpoint_fingerprint: dict[str, Any],
 ) -> None:
     progress = completed / total_expected if total_expected else 0.0
     state = {
@@ -442,6 +582,9 @@ def _write_checkpoint_state(
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "checkpoint_path": str(checkpoint_path),
         "source_checkpoint": str(source_checkpoint) if source_checkpoint else None,
+        "method_version": checkpoint_fingerprint["method_version"],
+        "benchmark_fingerprint": checkpoint_fingerprint["fingerprint"],
+        "benchmark_fingerprint_payload": checkpoint_fingerprint["payload"],
         "completed": completed,
         "total_expected": total_expected,
         "progress_pct": round(progress * 100, 2),
