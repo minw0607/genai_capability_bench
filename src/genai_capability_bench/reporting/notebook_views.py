@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import pandas as pd
+from dotenv import load_dotenv
 
 from genai_capability_bench.core.schemas import Capability
 from genai_capability_bench.datasets.registry import get_dataset_spec, list_dataset_specs
@@ -99,6 +100,26 @@ def judge_config_table() -> pd.DataFrame:
             {"Field": "Judge model", "Value": os.environ.get("OPENAI_JUDGE_MODEL", "(not set)")},
             {"Field": "Judge purpose", "Value": "Optional review for ambiguous, low-score, or metric-disagreement cases"},
             {"Field": "Default mode", "Value": "Disabled unless ENABLE_JUDGE_REVIEW=True"},
+        ]
+    )
+
+
+def embedding_config_table() -> pd.DataFrame:
+    """Display optional embedding model context."""
+
+    load_dotenv()
+    embedding_model = os.environ.get("OPENAI_EMBEDDING_MODEL") or os.environ.get("EMBEDDING_MODEL", "")
+    return pd.DataFrame(
+        [
+            {"Field": "Embedding model", "Value": embedding_model or "(not set)"},
+            {
+                "Field": "Current notebook use",
+                "Value": "Not used in the default deterministic run; reserved for semantic metric upgrade.",
+            },
+            {
+                "Field": "Current semantic proxy",
+                "Value": "Local TF-IDF cosine similarity for reproducible offline scoring.",
+            },
         ]
     )
 

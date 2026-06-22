@@ -25,12 +25,12 @@ Metrics are classified into four roles:
 
 ## Scoring Profiles
 
-| Profile | Primary Metrics | Recommended Datasets | Caveat |
-|---|---|---|---|
-| `short_answer_qa` | Exact Match, Token F1 | TriviaQA, SQuAD short answers, custom golden QA | Contains match is diagnostic only |
-| `multiple_choice` | Exact Match | MMLU, ARC | Prefer exact option parsing when explanations are present |
-| `long_reference_qa` | ROUGE-L, Semantic Similarity | Long-passage Natural Questions variants | Low scores can reflect reference-shape mismatch |
-| `truthfulness_generation` | LLM judge correctness | TruthfulQA-style generation | Requires calibrated judge rubric |
+| Profile | Primary Metrics | Primary Score Formula | Recommended Datasets | Caveat |
+|---|---|---|---|---|
+| `short_answer_qa` | Exact Match, Token F1 | `max(exact_match, 0.65 * token_f1 + 0.35 * semantic_similarity)` | TriviaQA, SQuAD short answers, custom golden QA | Contains match is diagnostic only |
+| `multiple_choice` | Exact Match | exact match against answer text or displayed option label | MMLU, ARC | Prefer exact option parsing when explanations are present |
+| `long_reference_qa` | ROUGE-L, Semantic Similarity | `max(0.55 * rouge_l + 0.45 * semantic_similarity, 0.50 * token_f1 + 0.50 * semantic_similarity)` | Long-passage Natural Questions variants | Low scores can reflect reference-shape mismatch |
+| `truthfulness_generation` | LLM judge correctness | judge rubric score, with deterministic metrics as supporting evidence | TruthfulQA-style generation | Requires calibrated judge rubric |
 
 ## Dataset Inventory Principle
 

@@ -36,6 +36,7 @@ class ScoringProfile:
     primary_metrics: tuple[str, ...]
     secondary_metrics: tuple[str, ...]
     diagnostic_metrics: tuple[str, ...]
+    scoring_formula: str
     recommended_for: str
     caveat: str
 
@@ -123,6 +124,7 @@ SCORING_PROFILES: dict[str, ScoringProfile] = {
         primary_metrics=("exact_match", "token_f1"),
         secondary_metrics=("semantic_similarity", "bleu", "rouge_l"),
         diagnostic_metrics=("contains_match",),
+        scoring_formula="max(exact_match, 0.65 * token_f1 + 0.35 * semantic_similarity)",
         recommended_for="Closed-book and open-domain QA with concise aliases.",
         caveat="Contains match is diagnostic only to avoid over-crediting long wrong answers.",
     ),
@@ -132,6 +134,7 @@ SCORING_PROFILES: dict[str, ScoringProfile] = {
         primary_metrics=("exact_match",),
         secondary_metrics=("token_f1",),
         diagnostic_metrics=("contains_match",),
+        scoring_formula="exact_match against answer text or displayed option label",
         recommended_for="MMLU, ARC, and option-label tasks.",
         caveat="A dedicated option parser should be preferred when models return explanations.",
     ),
@@ -141,6 +144,10 @@ SCORING_PROFILES: dict[str, ScoringProfile] = {
         primary_metrics=("rouge_l", "semantic_similarity"),
         secondary_metrics=("token_f1", "rouge_1", "bleu"),
         diagnostic_metrics=("contains_match",),
+        scoring_formula=(
+            "max(0.55 * rouge_l + 0.45 * semantic_similarity, "
+            "0.50 * token_f1 + 0.50 * semantic_similarity)"
+        ),
         recommended_for="Questions where references are long passages rather than concise answers.",
         caveat="Low scores may indicate reference-shape mismatch, not necessarily wrong concise answers.",
     ),
@@ -150,6 +157,7 @@ SCORING_PROFILES: dict[str, ScoringProfile] = {
         primary_metrics=("llm_judge_correctness",),
         secondary_metrics=("semantic_similarity", "token_f1"),
         diagnostic_metrics=("contains_match",),
+        scoring_formula="judge rubric score, with deterministic metrics as supporting evidence",
         recommended_for="TruthfulQA-style misconception-resistant generation.",
         caveat="Correct-vs-incorrect reference comparison and calibrated judge rubrics are needed.",
     ),
