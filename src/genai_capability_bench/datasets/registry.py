@@ -39,6 +39,12 @@ class DatasetSpec:
     requires_context: bool = False
     task_format: str = "open_qa"
     scoring_guidance: str = "reference_match"
+    answer_type: str = "short_answer"
+    reference_shape: str = "short_aliases"
+    scoring_profile: str = "short_answer_qa"
+    primary_metrics: tuple[str, ...] = ("exact_match", "token_f1")
+    secondary_metrics: tuple[str, ...] = ("semantic_similarity", "rouge_l", "bleu")
+    caveats: str = ""
     notes: str = ""
 
 
@@ -53,7 +59,8 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         normalizer="already_normalized",
         description="Small local closed-book factual QA sample across common domains.",
         task_format="closed_book_short_answer",
-        scoring_guidance="exact/contains/F1/TF-IDF reference matching",
+        scoring_guidance="short-answer EM/F1 primary; semantic/ROUGE/BLEU secondary",
+        caveats="Small smoke dataset; not model-quality evidence.",
     ),
     "core_demo_mixed": DatasetSpec(
         key="core_demo_mixed",
@@ -66,6 +73,7 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         description="Tiny mixed-capability smoke-test dataset; filtered to answer accuracy in this notebook.",
         task_format="mixed_demo",
         scoring_guidance="capability-specific starter scoring",
+        caveats="Smoke-test only.",
     ),
     "mmlu": DatasetSpec(
         key="mmlu",
@@ -78,7 +86,12 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         normalizer="mmlu",
         description="Massive Multitask Language Understanding multiple-choice benchmark.",
         task_format="multiple_choice",
-        scoring_guidance="option-text and answer-key matching; future grader should use exact option accuracy",
+        scoring_guidance="exact option/answer matching",
+        answer_type="multiple_choice",
+        reference_shape="option_text_and_label",
+        scoring_profile="multiple_choice",
+        primary_metrics=("exact_match",),
+        secondary_metrics=("token_f1",),
         notes="Large benchmark. Use small sample sizes first.",
     ),
     "triviaqa": DatasetSpec(
@@ -92,7 +105,10 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         normalizer="triviaqa",
         description="Open-domain trivia question answering benchmark.",
         task_format="open_domain_short_answer",
-        scoring_guidance="alias/reference matching; embedding review useful for paraphrases",
+        scoring_guidance="short-answer EM/F1 primary; semantic/ROUGE/BLEU secondary",
+        answer_type="short_answer",
+        reference_shape="aliases",
+        scoring_profile="short_answer_qa",
         notes="Some configurations are large; normalized cache is recommended.",
     ),
     "natural_questions": DatasetSpec(
@@ -104,8 +120,17 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         default_split="train",
         normalizer="natural_questions",
         description="Real user-style question-answer pairs derived from Natural Questions.",
-        task_format="open_domain_short_answer",
-        scoring_guidance="reference matching; answers may have multiple aliases",
+        task_format="open_domain_long_reference",
+        scoring_guidance="long-reference ROUGE/semantic profile; use caution for concise-answer accuracy",
+        answer_type="long_reference_answer",
+        reference_shape="passage_or_long_answer",
+        scoring_profile="long_reference_qa",
+        primary_metrics=("rouge_l", "semantic_similarity"),
+        secondary_metrics=("token_f1", "rouge_1", "bleu"),
+        caveats=(
+            "Current HF source often provides long answer passages rather than concise gold answers; "
+            "interpret low concise-answer scores as possible reference-shape mismatch."
+        ),
     ),
     "squad": DatasetSpec(
         key="squad",
@@ -118,7 +143,10 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         requires_context=True,
         description="Reading-comprehension QA over Wikipedia passages.",
         task_format="context_grounded_qa",
-        scoring_guidance="reference matching plus future context-grounded scoring",
+        scoring_guidance="short-answer EM/F1 primary plus context-grounded scoring in RAG notebook",
+        answer_type="short_answer",
+        reference_shape="extractive_aliases",
+        scoring_profile="short_answer_qa",
         notes="Context is stored in task metadata; better suited to future context/RAG workflows.",
     ),
     "arc": DatasetSpec(
@@ -132,7 +160,12 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         normalizer="arc",
         description="Grade-school science multiple-choice QA benchmark.",
         task_format="multiple_choice",
-        scoring_guidance="option-text and answer-key matching; future grader should use exact option accuracy",
+        scoring_guidance="exact option/answer matching",
+        answer_type="multiple_choice",
+        reference_shape="option_text_and_label",
+        scoring_profile="multiple_choice",
+        primary_metrics=("exact_match",),
+        secondary_metrics=("token_f1",),
     ),
     "hotpotqa": DatasetSpec(
         key="hotpotqa",
@@ -146,7 +179,10 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         requires_context=True,
         description="Diverse explainable multi-hop QA benchmark.",
         task_format="multi_hop_qa",
-        scoring_guidance="reference matching; future scoring should separate reasoning and RAG/context use",
+        scoring_guidance="short-answer EM/F1 primary; reasoning/RAG notebooks should add decomposition metrics",
+        answer_type="short_answer",
+        reference_shape="short_answer",
+        scoring_profile="short_answer_qa",
         notes="Also relevant to future reasoning and RAG capability notebooks.",
     ),
     "truthfulqa": DatasetSpec(
@@ -161,6 +197,11 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         description="Truthfulness benchmark built around common misconceptions.",
         task_format="truthfulness_generation",
         scoring_guidance="correct-vs-incorrect references; primary evaluator should be Truthfulness",
+        answer_type="open_generation",
+        reference_shape="correct_and_incorrect_sets",
+        scoring_profile="truthfulness_generation",
+        primary_metrics=("llm_judge_correctness",),
+        secondary_metrics=("semantic_similarity", "token_f1"),
         notes="Primary home is the Truthfulness notebook; selectable here with caveats.",
     ),
     "custom": DatasetSpec(
@@ -173,6 +214,9 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         description="User-provided JSON, JSONL, or CSV file already matching the EvalTask schema.",
         task_format="custom_normalized",
         scoring_guidance="depends on provided references and metadata",
+        answer_type="custom",
+        reference_shape="custom",
+        caveats="Custom data should declare scoring_profile in metadata when possible.",
     ),
 }
 
@@ -232,7 +276,7 @@ def materialize_dataset(
     if spec.source_type == "local":
         source = repo_root / str(spec.local_path)
         tasks = load_tasks(source)
-        tasks = [_enrich_choice_references(task) for task in tasks]
+        tasks = [_enrich_task_metadata(_enrich_choice_references(task), spec) for task in tasks]
         return _sample(tasks, sample_size, seed), source
 
     if spec.source_type == "custom":
@@ -240,14 +284,14 @@ def materialize_dataset(
             raise ValueError("custom_path is required when key='custom'")
         source = Path(custom_path)
         tasks = load_tasks(source)
-        tasks = [_enrich_choice_references(task) for task in tasks]
+        tasks = [_enrich_task_metadata(_enrich_choice_references(task), spec) for task in tasks]
         return _sample(tasks, sample_size, seed), source
 
     if spec.source_type != "huggingface":
         raise ValueError(f"Unsupported source_type for {spec.key}: {spec.source_type}")
 
     if cache_path.exists() and not refresh_cache:
-        tasks = [_enrich_choice_references(task) for task in load_tasks(cache_path)]
+        tasks = [_enrich_task_metadata(_enrich_choice_references(task), spec) for task in load_tasks(cache_path)]
         return tasks, cache_path
 
     if not download_if_missing:
@@ -257,7 +301,7 @@ def materialize_dataset(
 
     rows = _load_huggingface_rows(spec, split=split)
     rows = _sample_rows(rows, sample_size, seed)
-    tasks = _normalize_rows(spec, rows)
+    tasks = [_enrich_task_metadata(task, spec) for task in _normalize_rows(spec, rows)]
 
     if cache_local_copy:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -281,6 +325,9 @@ def dataset_options_table(capability: Capability | None = None) -> pd.DataFrame:
                 "description": spec.description,
                 "task_format": spec.task_format,
                 "scoring_guidance": spec.scoring_guidance,
+                "answer_type": spec.answer_type,
+                "reference_shape": spec.reference_shape,
+                "scoring_profile": spec.scoring_profile,
                 "notes": spec.notes,
             }
         )
@@ -475,6 +522,21 @@ def _enrich_choice_references(task: EvalTask) -> EvalTask:
     task.references = list(
         dict.fromkeys([*task.references, *_choice_references(task.expected_output, choices, answer_key)])
     )
+    return task
+
+
+def _enrich_task_metadata(task: EvalTask, spec: DatasetSpec) -> EvalTask:
+    task.metadata = {
+        **task.metadata,
+        "dataset_key": spec.key,
+        "task_format": spec.task_format,
+        "answer_type": spec.answer_type,
+        "reference_shape": spec.reference_shape,
+        "scoring_profile": task.metadata.get("scoring_profile", spec.scoring_profile),
+        "primary_metrics": list(spec.primary_metrics),
+        "secondary_metrics": list(spec.secondary_metrics),
+        "dataset_caveats": spec.caveats,
+    }
     return task
 
 

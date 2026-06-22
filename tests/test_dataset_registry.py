@@ -46,3 +46,26 @@ def test_mmlu_normalizer_uses_displayed_option_label_reference():
     assert task.expected_output == "correct"
     assert task.references == ["correct", "C"]
     assert "2" not in task.references
+
+
+def test_dataset_inventory_declares_scoring_profiles():
+    trivia = get_dataset_spec("triviaqa")
+    natural_questions = get_dataset_spec("natural_questions")
+    mmlu = get_dataset_spec("mmlu")
+
+    assert trivia.scoring_profile == "short_answer_qa"
+    assert natural_questions.scoring_profile == "long_reference_qa"
+    assert natural_questions.reference_shape == "passage_or_long_answer"
+    assert mmlu.scoring_profile == "multiple_choice"
+
+
+def test_materialized_tasks_include_dataset_metric_metadata():
+    tasks, _ = materialize_dataset(
+        "answer_accuracy_sample",
+        repo_root=Path("."),
+        sample_size=1,
+        seed=42,
+    )
+
+    assert tasks[0].metadata["scoring_profile"] == "short_answer_qa"
+    assert "primary_metrics" in tasks[0].metadata

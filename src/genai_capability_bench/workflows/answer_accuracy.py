@@ -118,6 +118,10 @@ def load_answer_accuracy_tasks(config: AnswerAccuracyRunConfig) -> tuple[list[Ev
                 "raw_tasks_loaded": len(tasks),
                 "answer_accuracy_tasks": len(answer_tasks),
                 "categories": ", ".join(sorted({t.category for t in answer_tasks})),
+                "scoring_profile": spec.scoring_profile,
+                "reference_shape": spec.reference_shape,
+                "primary_metrics": ", ".join(spec.primary_metrics),
+                "dataset_caveats": spec.caveats,
             }
         )
 
@@ -298,7 +302,9 @@ def _build_markdown_report(
 ) -> str:
     model_names = ", ".join(m.name for m in models)
     dataset_lines = "\n".join(
-        f"- `{row.dataset_key}` ({row.split}): {row.answer_accuracy_tasks} tasks from `{row.cache_or_source}`"
+        f"- `{row.dataset_key}` ({row.split}): {row.answer_accuracy_tasks} tasks, "
+        f"profile `{getattr(row, 'scoring_profile', 'unknown')}`, "
+        f"reference shape `{getattr(row, 'reference_shape', 'unknown')}` from `{row.cache_or_source}`"
         for row in dataset_manifest_df.itertuples(index=False)
     )
     dataset_summary_lines = "\n".join(
@@ -502,7 +508,14 @@ def _build_reliability_notes(
     if "contains_only_credit" in diagnostics_df and bool(diagnostics_df["contains_only_credit"].any()):
         count = int(diagnostics_df["contains_only_credit"].sum())
         notes.append(
-            f"{count} case(s) passed primarily because the reference answer appeared inside a longer response; review these for over-credit risk."
+            f"{count} case(s) would be over-credited by contains-match; review these for answer correctness."
+        )
+    if "reference_shape" in dataset_manifest_df and (dataset_manifest_df["reference_shape"] == "passage_or_long_answer").any():
+        datasets = ", ".join(
+            sorted(dataset_manifest_df.loc[dataset_manifest_df["reference_shape"] == "passage_or_long_answer", "dataset_key"])
+        )
+        notes.append(
+            f"{datasets} uses long passage-style references; concise answers may need short-answer extraction or judge review."
         )
 
     return notes

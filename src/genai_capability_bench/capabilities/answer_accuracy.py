@@ -5,13 +5,7 @@ from __future__ import annotations
 from genai_capability_bench.capabilities.base import CapabilityEvaluator
 from genai_capability_bench.clients.base import ModelClient
 from genai_capability_bench.core.schemas import CapabilityResult, EvalTask, ModelSpec
-from genai_capability_bench.metrics.lexical import (
-    best_reference_score,
-    contains_match,
-    exact_match,
-    token_f1,
-)
-from genai_capability_bench.metrics.semantic import best_tfidf_similarity
+from genai_capability_bench.metrics.registry import evaluate_reference_metrics
 
 
 class AnswerAccuracyEvaluator(CapabilityEvaluator):
@@ -31,12 +25,9 @@ class AnswerAccuracyEvaluator(CapabilityEvaluator):
         )
         response = self._generate(client, prompt)
         references = task.references or ([task.expected_output] if task.expected_output else [])
-
-        em = best_reference_score(response.text, references, exact_match)
-        contains = best_reference_score(response.text, references, contains_match)
-        f1 = best_reference_score(response.text, references, token_f1)
-        semantic = best_tfidf_similarity(response.text, references)
-        score = max(em, contains, 0.45 * f1 + 0.55 * semantic)
+        scoring_profile = task.metadata.get("scoring_profile", "short_answer_qa")
+        metrics = evaluate_reference_metrics(response.text, references, scoring_profile)
+        score = float(metrics["primary_score"])
 
         return CapabilityResult(
             run_id=run_id,
@@ -52,12 +43,6 @@ class AnswerAccuracyEvaluator(CapabilityEvaluator):
             passed=score >= self.pass_threshold,
             latency_ms=response.latency_ms,
             cost=response.cost,
-            metrics={
-                "exact_match": em,
-                "contains_match": contains,
-                "token_f1": f1,
-                "tfidf_similarity": semantic,
-            },
+            metrics=metrics,
             metadata=task.metadata,
         )
-

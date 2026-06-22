@@ -30,27 +30,49 @@ def add_answer_accuracy_diagnostics(results_df: pd.DataFrame, pass_threshold: fl
 
     df = results_df.copy()
     metric_rows = [parse_metric_dict(v) for v in df["metrics"]]
-    for key in ["exact_match", "contains_match", "token_f1", "tfidf_similarity"]:
+    for key in [
+        "primary_score",
+        "exact_match",
+        "contains_match",
+        "token_f1",
+        "semantic_similarity",
+        "tfidf_similarity",
+        "bleu",
+        "rouge_1",
+        "rouge_2",
+        "rouge_l",
+    ]:
         df[key] = [float(m.get(key, 0.0) or 0.0) for m in metric_rows]
+    df["scoring_profile"] = [str(m.get("scoring_profile", "")) for m in metric_rows]
 
-    df["semantic_blend_score"] = 0.45 * df["token_f1"] + 0.55 * df["tfidf_similarity"]
+    df["semantic_blend_score"] = 0.65 * df["token_f1"] + 0.35 * df["semantic_similarity"]
     df["strict_score"] = df[["exact_match", "semantic_blend_score"]].max(axis=1)
     df["contains_only_credit"] = (
-        (df["score"] >= pass_threshold)
-        & (df["contains_match"] >= 1.0)
+        (df["contains_match"] >= 1.0)
         & (df["exact_match"] < 1.0)
-        & (df["strict_score"] < pass_threshold)
+        & (df["primary_score"] < pass_threshold)
     )
-    df["metric_spread"] = df[["exact_match", "contains_match", "token_f1", "tfidf_similarity"]].max(axis=1) - df[
-        ["exact_match", "contains_match", "token_f1", "tfidf_similarity"]
-    ].min(axis=1)
+    df["reference_shape_warning"] = df.apply(_reference_shape_warning, axis=1)
+    metric_cols = ["exact_match", "token_f1", "semantic_similarity", "rouge_l"]
+    df["metric_spread"] = df[metric_cols].max(axis=1) - df[metric_cols].min(axis=1)
     df["metric_disagreement"] = df["metric_spread"] >= 0.5
+    df["score"] = df["primary_score"]
+    if "passed" in df:
+        df["passed"] = df["score"] >= pass_threshold
 
-    def priority(score: float, disagreement: bool, contains_only_credit: bool) -> str:
+    df["would_pass_contains_rule"] = (
+        (df["contains_match"] >= 1.0)
+        & (df["exact_match"] < 1.0)
+        & (df["primary_score"] < pass_threshold)
+    )
+
+    def priority(score: float, disagreement: bool, contains_only_credit: bool, reference_warning: str) -> str:
         if score < 0.4:
             return "High review priority"
         if score < pass_threshold:
             return "Near threshold"
+        if reference_warning:
+            return "Reference-shape warning"
         if contains_only_credit:
             return "Contains-only credit"
         if disagreement:
@@ -58,8 +80,10 @@ def add_answer_accuracy_diagnostics(results_df: pd.DataFrame, pass_threshold: fl
         return "Looks good"
 
     df["review_priority"] = [
-        priority(float(s), bool(d), bool(c))
-        for s, d, c in zip(df["score"], df["metric_disagreement"], df["contains_only_credit"])
+        priority(float(s), bool(d), bool(c), str(w))
+        for s, d, c, w in zip(
+            df["score"], df["metric_disagreement"], df["contains_only_credit"], df["reference_shape_warning"]
+        )
     ]
     df["flagged"] = df["review_priority"] != "Looks good"
     df["flag_reason"] = [
@@ -70,10 +94,13 @@ def add_answer_accuracy_diagnostics(results_df: pd.DataFrame, pass_threshold: fl
                 "exact_match",
                 "contains_match",
                 "token_f1",
-                "tfidf_similarity",
+                "semantic_similarity",
+                "bleu",
+                "rouge_l",
                 "metric_disagreement",
                 "contains_only_credit",
                 "strict_score",
+                "reference_shape_warning",
                 "review_priority",
             ]
         ].to_dict(orient="records")
@@ -82,8 +109,9 @@ def add_answer_accuracy_diagnostics(results_df: pd.DataFrame, pass_threshold: fl
         {
             "High review priority": "Inspect manually; likely incorrect or missing expected answer.",
             "Near threshold": "Review with stronger semantic metric or judge model.",
-            "Contains-only credit": "Verify that the answer does not contain the right phrase inside an otherwise wrong response.",
+            "Contains-only credit": "Review manually; contains-match would over-credit this answer under older scoring.",
             "Metric disagreement": "Check whether lexical metrics under/over-credit a paraphrase.",
+            "Reference-shape warning": "Inspect dataset normalization; reference may be a long passage rather than a concise answer.",
             "Looks good": "No immediate review required.",
         }
     )
@@ -95,10 +123,12 @@ def _flag_reason(row: dict[str, Any], pass_threshold: float) -> str:
         return f"Composite score {row['score']:.2f} is well below review threshold."
     if row["score"] < pass_threshold:
         return f"Composite score {row['score']:.2f} is below pass threshold {pass_threshold:.2f}."
+    if row.get("reference_shape_warning"):
+        return str(row["reference_shape_warning"])
     if row["contains_only_credit"]:
         return (
-            f"Composite score passed because the reference appeared in the response, "
-            f"but stricter score was {row['strict_score']:.2f}."
+            "Reference appeared in the response, but the profile primary score did not pass; "
+            "contains-match is diagnostic only."
         )
     if row["metric_disagreement"]:
         return (
@@ -106,6 +136,20 @@ def _flag_reason(row: dict[str, Any], pass_threshold: float) -> str:
             "so the case may need semantic or judge review."
         )
     return "No flag triggered."
+
+
+def _reference_shape_warning(row: pd.Series) -> str:
+    metadata = row.get("metadata", {})
+    if isinstance(metadata, str):
+        metadata = parse_metric_dict(metadata)
+    if not isinstance(metadata, dict):
+        return ""
+    if metadata.get("reference_shape") == "passage_or_long_answer":
+        return (
+            "Dataset reference is a long passage; concise correct answers may score low without "
+            "short-answer extraction or judge review."
+        )
+    return ""
 
 
 def metric_guide_table() -> pd.DataFrame:
@@ -132,16 +176,28 @@ def metric_guide_table() -> pd.DataFrame:
                 "Limitations": "Lexical only; does not understand meaning.",
             },
             {
-                "Metric": "TF-IDF Similarity",
-                "What it checks": "Cosine similarity over local TF-IDF vectors.",
-                "Best for": "Lightweight offline semantic-ish signal in demos.",
-                "Limitations": "Not a true embedding model; should be upgraded for production scoring.",
+                "Metric": "Semantic Similarity",
+                "What it checks": "Cosine similarity over local TF-IDF vectors in the current implementation.",
+                "Best for": "Lightweight offline semantic signal in demos; future embedding upgrade path.",
+                "Limitations": "Not contextual; BERTScore/provider embeddings are stronger for production.",
             },
             {
-                "Metric": "Composite Score",
-                "What it checks": "Maximum of exact match, contains match, and a weighted F1/TF-IDF blend.",
-                "Best for": "A practical starter score across short answer tasks.",
-                "Limitations": "Should be complemented with embeddings or LLM-judge rubrics for open-ended answers.",
+                "Metric": "BLEU",
+                "What it checks": "N-gram precision with brevity penalty.",
+                "Best for": "Translation-like outputs and wording-sensitive generation.",
+                "Limitations": "Usually weak as a primary factual QA metric.",
+            },
+            {
+                "Metric": "ROUGE-L",
+                "What it checks": "Longest common subsequence overlap with reference text.",
+                "Best for": "Long-form answers and summary-style references.",
+                "Limitations": "Lexical; can miss correct concise answers when references are long passages.",
+            },
+            {
+                "Metric": "Profile Primary Score",
+                "What it checks": "Dataset-specific score selected from the repo-wide scoring profile.",
+                "Best for": "Comparing within a dataset/task type.",
+                "Limitations": "Do not compare across datasets without checking scoring profile and reference shape.",
             },
         ]
     )

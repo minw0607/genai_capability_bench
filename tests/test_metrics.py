@@ -1,4 +1,6 @@
+from genai_capability_bench.metrics.generation import bleu_score, rouge_l
 from genai_capability_bench.metrics.lexical import contains_match, exact_match, token_f1
+from genai_capability_bench.metrics.registry import evaluate_reference_metrics, metric_standards_table
 from genai_capability_bench.metrics.semantic import tfidf_similarity
 
 
@@ -20,3 +22,28 @@ def test_tfidf_similarity_handles_single_character_answers():
 
 def test_tfidf_similarity_handles_punctuation_only_text():
     assert tfidf_similarity("...", "...") == 0.0
+
+
+def test_rouge_l_rewards_sequence_overlap():
+    assert rouge_l("George Washington", "George Washington") == 1.0
+
+
+def test_bleu_is_available_as_secondary_metric():
+    assert bleu_score("the cat sat", "the cat sat") > 0.0
+
+
+def test_metric_registry_computes_profile_primary_score_without_contains_credit():
+    metrics = evaluate_reference_metrics(
+        "APR stands for Annual Percentage Rate",
+        ["Annual Percentage Rate"],
+        "short_answer_qa",
+    )
+
+    assert metrics["contains_match"] == 1.0
+    assert metrics["exact_match"] == 0.0
+    assert metrics["primary_score"] < 1.0
+
+
+def test_metric_standards_table_includes_bleu_and_rouge():
+    keys = set(metric_standards_table()["key"])
+    assert {"bleu", "rouge_l", "semantic_similarity"} <= keys

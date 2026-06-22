@@ -7,6 +7,7 @@ import pandas as pd
 
 from genai_capability_bench.core.schemas import Capability
 from genai_capability_bench.datasets.registry import get_dataset_spec, list_dataset_specs
+from genai_capability_bench.metrics.registry import metric_standards_table, scoring_profiles_table
 
 
 def dataset_catalog_table(capability: Capability | None = None) -> pd.DataFrame:
@@ -22,13 +23,36 @@ def dataset_catalog_table(capability: Capability | None = None) -> pd.DataFrame:
                 "Default Split": spec.default_split,
                 "Primary Capability": spec.capability.value,
                 "Task Format": spec.task_format,
+                "Answer Type": spec.answer_type,
+                "Reference Shape": spec.reference_shape,
+                "Scoring Profile": spec.scoring_profile,
+                "Primary Metrics": ", ".join(spec.primary_metrics),
+                "Secondary Metrics": ", ".join(spec.secondary_metrics),
                 "Scoring Guidance": spec.scoring_guidance,
                 "Context Needed": "Yes" if spec.requires_context else "No",
                 "Description": spec.description,
+                "Caveats": spec.caveats,
                 "Notes": spec.notes,
             }
         )
     return pd.DataFrame(rows)
+
+
+def metric_standards_display_table() -> pd.DataFrame:
+    """Return repo-wide metric standards for notebooks."""
+
+    return metric_standards_table()[
+        ["key", "display_name", "role", "definition", "best_for", "limitations", "source"]
+    ]
+
+
+def scoring_profiles_display_table() -> pd.DataFrame:
+    """Return repo-wide scoring profiles for notebooks."""
+
+    df = scoring_profiles_table().copy()
+    for col in ["primary_metrics", "secondary_metrics", "diagnostic_metrics"]:
+        df[col] = df[col].apply(lambda values: ", ".join(values))
+    return df
 
 
 def model_config_table(models) -> pd.DataFrame:
@@ -163,6 +187,8 @@ def selected_dataset_plan_table(
                 "Requested Sample": sample_text,
                 "Category Scope": category_text,
                 "Task Format": spec.task_format,
+                "Scoring Profile": spec.scoring_profile,
+                "Reference Shape": spec.reference_shape,
                 "Context Required": "Yes" if spec.requires_context else "No",
                 "Scoring Caveat": spec.scoring_guidance,
             }
