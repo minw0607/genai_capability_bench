@@ -102,6 +102,11 @@ It consolidates compatible public benchmark caches into one uniform `EvalTask`
 JSONL file while preserving original source questions, expected answers, and
 reference answers.
 
+For the full methodology, see the dedicated
+[`Answer Accuracy Evaluation Framework`](docs/answer_accuracy_framework.md)
+guide. It documents the testing approach, curated data construction, sampling
+policy, scoring profiles, diagnostics, reporting model, and artifact strategy.
+
 Current curated benchmark:
 
 | Source | Role | Rows |
@@ -178,7 +183,7 @@ logic lives in `src/`; notebooks stay readable, interactive, and report-oriented
 
 | Notebook | Purpose |
 |---|---|
-| [`01_answer_accuracy.ipynb`](notebooks/01_answer_accuracy.ipynb) | Evaluate factual QA and slice results by domain/category |
+| [`01_answer_accuracy.ipynb`](notebooks/01_answer_accuracy.ipynb) | Evaluate factual QA and slice results by domain/category. See the [Answer Accuracy framework guide](docs/answer_accuracy_framework.md). |
 | [`02_truthfulness.ipynb`](notebooks/02_truthfulness.ipynb) | Run TruthfulQA-style correct-vs-incorrect scoring |
 | [`03_instruction_following.ipynb`](notebooks/03_instruction_following.ipynb) | Check JSON, formatting, length, and constraint adherence |
 | [`04_reasoning_logic.ipynb`](notebooks/04_reasoning_logic.ipynb) | Evaluate final-answer correctness for reasoning tasks |
@@ -196,6 +201,12 @@ Capability overview
   -> executive summary
   -> saved artifacts
 ```
+
+Framework guides:
+
+| Guide | What It Covers |
+|---|---|
+| [`Answer Accuracy Evaluation Framework`](docs/answer_accuracy_framework.md) | Closed-book accuracy methodology, curated data sourcing, stratified sampling, scoring profiles, diagnostics, reporting, and artifact design |
 
 ---
 
