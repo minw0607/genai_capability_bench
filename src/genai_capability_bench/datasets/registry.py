@@ -44,6 +44,7 @@ class DatasetSpec:
     scoring_profile: str = "short_answer_qa"
     primary_metrics: tuple[str, ...] = ("exact_match", "token_f1")
     secondary_metrics: tuple[str, ...] = ("semantic_similarity", "rouge_l", "bleu")
+    default_sample_strategy: str = "random"
     caveats: str = ""
     notes: str = ""
 
@@ -74,6 +75,36 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         task_format="mixed_demo",
         scoring_guidance="capability-specific starter scoring",
         caveats="Smoke-test only.",
+    ),
+    "curated_knowledge_v1": DatasetSpec(
+        key="curated_knowledge_v1",
+        display_name="Curated Knowledge QA v1",
+        capability=Capability.ANSWER_ACCURACY,
+        source_type="local",
+        local_path="datasets/curated/answer_accuracy_knowledge_v1.jsonl",
+        default_split="curated",
+        normalizer="already_normalized",
+        description=(
+            "Default source-preserving closed-book knowledge QA dataset curated from all available compatible "
+            "public benchmark caches with broad taxonomy and source provenance."
+        ),
+        task_format="curated_closed_book_qa",
+        scoring_guidance="Preserve row-level source scoring profiles; report broad curated categories side by side.",
+        answer_type="mixed_closed_book",
+        reference_shape="source_preserved",
+        scoring_profile="source_preserved",
+        primary_metrics=("exact_match", "token_f1"),
+        secondary_metrics=("semantic_similarity", "rouge_l", "bleu"),
+        default_sample_strategy="stratified",
+        caveats=(
+            "Curated v1 is a structured showcase dataset, not a replacement for original benchmark reporting. "
+            "Questions, expected answers, and references are copied from normalized source rows."
+        ),
+        notes=(
+            "Default Answer Accuracy notebook dataset. Use SELECTED_CATEGORIES for broad categories such as "
+            "history, science, law_government, health_medicine, business, math, humanities_culture, and "
+            "general_knowledge."
+        ),
     ),
     "mmlu": DatasetSpec(
         key="mmlu",
@@ -256,6 +287,7 @@ def materialize_dataset(
     split: str | None = None,
     sample_size: int | None = None,
     seed: int = 42,
+    sample_strategy: str | None = None,
     download_if_missing: bool = True,
     cache_local_copy: bool = True,
     refresh_cache: bool = False,
@@ -271,13 +303,14 @@ def materialize_dataset(
     repo_root = Path(repo_root)
     spec = get_dataset_spec(key)
     split = split or spec.default_split
+    sample_strategy = sample_strategy or spec.default_sample_strategy
     cache_path = _cache_path(repo_root, spec.key, split, sample_size)
 
     if spec.source_type == "local":
         source = repo_root / str(spec.local_path)
         tasks = load_tasks(source)
         tasks = [_enrich_task_metadata(_enrich_choice_references(task), spec) for task in tasks]
-        return _sample(tasks, sample_size, seed), source
+        return _sample(tasks, sample_size, seed, sample_strategy), source
 
     if spec.source_type == "custom":
         if custom_path is None:
@@ -285,7 +318,7 @@ def materialize_dataset(
         source = Path(custom_path)
         tasks = load_tasks(source)
         tasks = [_enrich_task_metadata(_enrich_choice_references(task), spec) for task in tasks]
-        return _sample(tasks, sample_size, seed), source
+        return _sample(tasks, sample_size, seed, sample_strategy), source
 
     if spec.source_type != "huggingface":
         raise ValueError(f"Unsupported source_type for {spec.key}: {spec.source_type}")
@@ -379,12 +412,91 @@ def _normalize_rows(spec: DatasetSpec, rows: list[dict[str, Any]]) -> list[EvalT
     return tasks
 
 
-def _sample(tasks: list[EvalTask], sample_size: int | None, seed: int) -> list[EvalTask]:
+def _sample(tasks: list[EvalTask], sample_size: int | None, seed: int, strategy: str = "random") -> list[EvalTask]:
     if sample_size is None or sample_size >= len(tasks):
         return tasks
+    if strategy == "stratified":
+        return _stratified_sample(tasks, sample_size, seed)
+    if strategy != "random":
+        raise ValueError(f"Unknown sample strategy '{strategy}'. Use 'random' or 'stratified'.")
     rng = random.Random(seed)
     indices = sorted(rng.sample(range(len(tasks)), sample_size))
     return [tasks[i] for i in indices]
+
+
+def _stratified_sample(tasks: list[EvalTask], sample_size: int, seed: int) -> list[EvalTask]:
+    """Source-first, category-balanced deterministic sample."""
+
+    rng = random.Random(seed)
+    source_buckets: dict[str, list[int]] = {}
+    for idx, task in enumerate(tasks):
+        source = _task_source(task)
+        source_buckets.setdefault(source, []).append(idx)
+
+    source_alloc = _balanced_allocation(
+        {source: len(bucket) for source, bucket in source_buckets.items()},
+        sample_size,
+        rng,
+    )
+    selected_indices: set[int] = set()
+    for source, source_target in source_alloc.items():
+        category_buckets: dict[str, list[int]] = {}
+        for idx in source_buckets[source]:
+            task = tasks[idx]
+            category = str(task.category or "uncategorized")
+            category_buckets.setdefault(category, []).append(idx)
+        category_alloc = _balanced_allocation(
+            {category: len(bucket) for category, bucket in category_buckets.items()},
+            source_target,
+            rng,
+        )
+        for category, category_target in category_alloc.items():
+            bucket = category_buckets[category]
+            count = min(category_target, len(bucket))
+            selected_indices.update(rng.sample(bucket, count))
+
+    if len(selected_indices) < sample_size:
+        remaining = [idx for idx in range(len(tasks)) if idx not in selected_indices]
+        selected_indices.update(rng.sample(remaining, sample_size - len(selected_indices)))
+
+    return [task for idx, task in enumerate(tasks) if idx in selected_indices][:sample_size]
+
+
+def _balanced_allocation(group_sizes: dict[str, int], total: int, rng: random.Random) -> dict[str, int]:
+    """Allocate a target count across groups without exceeding group capacity."""
+
+    if total <= 0 or not group_sizes:
+        return {}
+    allocation = {key: 0 for key in group_sizes}
+    remaining = min(total, sum(group_sizes.values()))
+    active = [key for key, size in group_sizes.items() if size > 0]
+    rng.shuffle(active)
+    while remaining > 0 and active:
+        share, extra = divmod(remaining, len(active))
+        share = max(share, 1)
+        progressed = False
+        next_active = []
+        for idx, key in enumerate(active):
+            capacity = group_sizes[key] - allocation[key]
+            request = share + (1 if idx < extra else 0)
+            take = min(capacity, request, remaining)
+            if take > 0:
+                allocation[key] += take
+                remaining -= take
+                progressed = True
+            if allocation[key] < group_sizes[key]:
+                next_active.append(key)
+            if remaining == 0:
+                break
+        if not progressed:
+            break
+        active = next_active
+    return {key: value for key, value in allocation.items() if value > 0}
+
+
+def _task_source(task: EvalTask) -> str:
+    metadata = task.metadata if isinstance(task.metadata, dict) else {}
+    return str(metadata.get("source_dataset") or metadata.get("dataset_key") or "local")
 
 
 def _sample_rows(rows: list[dict[str, Any]], sample_size: int | None, seed: int) -> list[dict[str, Any]]:
@@ -506,7 +618,7 @@ def _choice_references(answer_text: str, choices: Any, answer_key: Any = None) -
     refs = [answer_text]
     label = _choice_answer_label(choices, answer_key)
     if label:
-        refs.append(label)
+        refs.extend([label, f"{label}. {answer_text}", f"{label} {answer_text}"])
     elif answer_key is not None:
         refs.append(str(answer_key))
     return list(dict.fromkeys(refs))

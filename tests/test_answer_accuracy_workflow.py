@@ -24,10 +24,15 @@ def test_answer_accuracy_workflow_local_sample(tmp_path):
 
     assert len(result.results_df) == 2
     assert result.report_path.exists()
-    assert (result.run_dir / "diagnostics.csv").exists()
-    assert (result.run_dir / "dataset_manifest.csv").exists()
-    assert (result.run_dir / "dataset_summary.csv").exists()
+    assert result.artifact_paths["executive_summary_html"].exists()
+    assert result.artifact_paths["diagnostics_csv"].exists()
+    assert result.artifact_paths["dataset_manifest_csv"].exists()
+    assert result.artifact_paths["dataset_summary_csv"].exists()
+    assert result.artifact_paths["raw_results_csv"].name.startswith("answer_accuracy_raw_results_")
+    assert result.artifact_paths["executive_summary_html"].name.startswith("answer_accuracy_executive_summary_")
     assert "dataset_key" in result.results_df.columns
+    assert result.dataset_manifest_df["source_fingerprint"].str.startswith("sha256:").all()
+    assert "sample_strategy" in result.dataset_manifest_df.columns
     assert len(result.dataset_summary_df) > 0
 
 

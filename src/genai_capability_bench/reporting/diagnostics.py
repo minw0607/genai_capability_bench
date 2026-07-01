@@ -44,6 +44,7 @@ def add_answer_accuracy_diagnostics(results_df: pd.DataFrame, pass_threshold: fl
     ]:
         df[key] = [float(m.get(key, 0.0) or 0.0) for m in metric_rows]
     df["scoring_profile"] = [str(m.get("scoring_profile", "")) for m in metric_rows]
+    df["semantic_similarity_method"] = [str(m.get("semantic_similarity_method", "")) for m in metric_rows]
 
     df["semantic_blend_score"] = 0.65 * df["token_f1"] + 0.35 * df["semantic_similarity"]
     df["strict_score"] = df[["exact_match", "semantic_blend_score"]].max(axis=1)
@@ -132,7 +133,7 @@ def _flag_reason(row: dict[str, Any], pass_threshold: float) -> str:
         )
     if row["metric_disagreement"]:
         return (
-            "Metrics disagree: exact/contains/F1/TF-IDF signals are far apart, "
+            "Metrics disagree: exact/contains/F1/semantic signals are far apart, "
             "so the case may need semantic or judge review."
         )
     return "No flag triggered."
@@ -177,9 +178,9 @@ def metric_guide_table() -> pd.DataFrame:
             },
             {
                 "Metric": "Semantic Similarity",
-                "What it checks": "Cosine similarity over local TF-IDF vectors in the current implementation.",
-                "Best for": "Lightweight offline semantic signal in demos; future embedding upgrade path.",
-                "Limitations": "Not contextual; BERTScore/provider embeddings are stronger for production.",
+                "What it checks": "Cosine similarity using local TF-IDF by default or provider embeddings when enabled.",
+                "Best for": "Paraphrase-tolerant comparison where wording differs from the reference.",
+                "Limitations": "TF-IDF is not contextual; provider embeddings add cost and dependency.",
             },
             {
                 "Metric": "BLEU",

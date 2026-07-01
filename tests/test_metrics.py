@@ -44,6 +44,35 @@ def test_metric_registry_computes_profile_primary_score_without_contains_credit(
     assert metrics["primary_score"] < 1.0
 
 
+def test_metric_registry_defaults_semantic_similarity_to_tfidf():
+    metrics = evaluate_reference_metrics("George Washington", ["Washington"], "short_answer_qa")
+
+    assert metrics["semantic_similarity_method"] == "tfidf"
+    assert metrics["tfidf_similarity"] is not None
+
+
+def test_metric_registry_can_fallback_from_optional_api_embeddings():
+    metrics = evaluate_reference_metrics(
+        "George Washington",
+        ["Washington"],
+        "short_answer_qa",
+        semantic_similarity_mode="api_embeddings_if_configured",
+    )
+
+    assert metrics["semantic_similarity_method"] in {"api_embeddings", "tfidf", "tfidf_fallback"}
+
+
+def test_multiple_choice_accepts_label_plus_answer_text():
+    metrics = evaluate_reference_metrics(
+        "D. stamina.",
+        ["stamina.", "D", "D. stamina.", "D stamina."],
+        "multiple_choice",
+    )
+
+    assert metrics["primary_score"] == 1.0
+    assert metrics["exact_match"] == 1.0
+
+
 def test_metric_standards_table_includes_bleu_and_rouge():
     keys = set(metric_standards_table()["key"])
     assert {"bleu", "rouge_l", "semantic_similarity"} <= keys

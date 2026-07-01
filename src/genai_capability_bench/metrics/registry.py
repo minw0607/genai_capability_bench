@@ -9,7 +9,7 @@ import pandas as pd
 
 from genai_capability_bench.metrics.generation import best_reference_generation_scores
 from genai_capability_bench.metrics.lexical import best_reference_score, contains_match, exact_match, token_f1
-from genai_capability_bench.metrics.semantic import best_tfidf_similarity
+from genai_capability_bench.metrics.semantic import best_semantic_similarity
 
 MetricRole = Literal["primary", "secondary", "diagnostic", "judge"]
 
@@ -73,10 +73,10 @@ METRIC_SPECS: dict[str, MetricSpec] = {
         key="semantic_similarity",
         display_name="Semantic Similarity",
         role="secondary",
-        definition="Cosine similarity over local TF-IDF vectors in the current lightweight implementation.",
-        best_for="Offline approximation of semantic overlap when wording differs.",
-        limitations="TF-IDF is not contextual; future provider embeddings/BERTScore should replace it for production.",
-        source="Local deterministic semantic proxy.",
+        definition="Cosine similarity over local TF-IDF vectors by default, or provider embeddings when explicitly enabled.",
+        best_for="Paraphrase-tolerant comparison when wording differs.",
+        limitations="TF-IDF is lightweight but not contextual; provider embeddings add cost and provider dependency.",
+        source="Local TF-IDF default; OpenAI-compatible embeddings optional.",
     ),
     "bleu": MetricSpec(
         key="bleu",
@@ -176,14 +176,24 @@ def scoring_profiles_table() -> pd.DataFrame:
     return pd.DataFrame([profile.__dict__ for profile in SCORING_PROFILES.values()])
 
 
-def evaluate_reference_metrics(prediction: str, references: list[str], scoring_profile: str) -> dict[str, float | str]:
+def evaluate_reference_metrics(
+    prediction: str,
+    references: list[str],
+    scoring_profile: str,
+    *,
+    semantic_similarity_mode: str = "tfidf",
+) -> dict[str, float | str | None]:
     """Compute common reference metrics and profile-specific primary score."""
 
     references = references or []
     exact = best_reference_score(prediction, references, exact_match)
     contains = best_reference_score(prediction, references, contains_match)
     f1 = best_reference_score(prediction, references, token_f1)
-    semantic = best_tfidf_similarity(prediction, references)
+    semantic, semantic_method = best_semantic_similarity(
+        prediction,
+        references,
+        mode=semantic_similarity_mode,
+    )
     generation = best_reference_generation_scores(prediction, references)
 
     if scoring_profile == "multiple_choice":
@@ -200,6 +210,7 @@ def evaluate_reference_metrics(prediction: str, references: list[str], scoring_p
         "contains_match": float(contains),
         "token_f1": float(f1),
         "semantic_similarity": float(semantic),
-        "tfidf_similarity": float(semantic),
+        "semantic_similarity_method": semantic_method,
+        "tfidf_similarity": float(semantic) if semantic_method.startswith("tfidf") else None,
         **{k: float(v) for k, v in generation.items()},
     }

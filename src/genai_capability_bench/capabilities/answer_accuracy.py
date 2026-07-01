@@ -11,6 +11,10 @@ from genai_capability_bench.metrics.registry import evaluate_reference_metrics
 class AnswerAccuracyEvaluator(CapabilityEvaluator):
     """Evaluate factual QA against reference answers."""
 
+    def __init__(self, pass_threshold: float = 0.7, semantic_similarity_mode: str = "tfidf"):
+        super().__init__(pass_threshold=pass_threshold)
+        self.semantic_similarity_mode = semantic_similarity_mode
+
     def evaluate_task(
         self,
         run_id: str,
@@ -26,7 +30,12 @@ class AnswerAccuracyEvaluator(CapabilityEvaluator):
         response = self._generate(client, prompt)
         references = task.references or ([task.expected_output] if task.expected_output else [])
         scoring_profile = task.metadata.get("scoring_profile", "short_answer_qa")
-        metrics = evaluate_reference_metrics(response.text, references, scoring_profile)
+        metrics = evaluate_reference_metrics(
+            response.text,
+            references,
+            scoring_profile,
+            semantic_similarity_mode=self.semantic_similarity_mode,
+        )
         score = float(metrics["primary_score"])
 
         return CapabilityResult(

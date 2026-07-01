@@ -94,6 +94,59 @@ evaluation repos rather than duplicating them.
 
 ---
 
+## 🧠 Default Knowledge Benchmark
+
+The Answer Accuracy notebook defaults to `curated_knowledge`, a repo-native,
+source-preserving benchmark designed for broad closed-book knowledge testing.
+It consolidates compatible public benchmark caches into one uniform `EvalTask`
+JSONL file while preserving original source questions, expected answers, and
+reference answers.
+
+Current curated benchmark:
+
+| Source | Role | Rows |
+|---|---|---:|
+| MMLU | Broad academic and professional multiple-choice knowledge | 14,042 |
+| TriviaQA | Concise open-domain factual QA | 17,944 |
+| ARC Challenge | Science exam-style multiple-choice QA | 1,170 |
+| **Total** | Versioned local curated benchmark | **33,156** |
+
+The full curated dataset is available locally as
+`datasets/curated/answer_accuracy_knowledge_v1.jsonl`. Notebook run modes sample
+from this file by default, so users get broad coverage without accidentally
+launching a full 33k-question model evaluation.
+
+### Sample Accuracy Evaluation Result
+
+The Answer Accuracy notebook produces a leadership-ready executive summary plus
+row-level diagnostics. The illustrative run below used a 500-row sample from
+`curated_knowledge_v1`; exact results will vary by model, seed, sampling
+strategy, judge settings, and provider configuration.
+
+| Measure | Result |
+|---|---:|
+| Responses evaluated | 500 |
+| Average score | 0.854 |
+| Pass rate | 80.2% |
+| Review-flagged cases | 122 |
+| Judge-reviewed cases | 10 |
+| Judge-rescued deterministic false negatives | 2 |
+
+**Executive summary illustration:** the tested model showed **Moderate-Strong**
+closed-book answer accuracy on the selected curated benchmark sample. Evaluation
+reliability was rated **Medium** because targeted judge review identified likely
+deterministic false negatives, reinforcing the need to inspect flagged and
+near-threshold cases before using the headline score as final model-quality
+evidence.
+
+![Answer accuracy by source dataset](docs/images/answer_accuracy_sample_source_performance.png)
+
+![Pass rate by curated category](docs/images/answer_accuracy_sample_category_pass_rate.png)
+
+![Diagnostic review queue mix](docs/images/answer_accuracy_sample_review_queue.png)
+
+---
+
 ## 🛠️ Current Build
 
 The repo currently includes a working vertical slice:
@@ -195,7 +248,7 @@ Provider settings are read from `.env`:
 ```bash
 OPENAI_GENERATION_MODEL=gpt-4o
 OPENAI_JUDGE_MODEL=gpt-4o
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_EMBEDDING_MODEL=text-embedding-3-large
 
 OPENAI_API_KEY=
 OPENAI_BASE_URL=https://api.openai.com/v1
@@ -207,6 +260,8 @@ OPENAI_APIM_SUBSCRIPTION_KEY=
 
 For Azure OpenAI, set `OPENAI_API_VERSION`. For direct OpenAI-compatible endpoints,
 leave it blank and set `OPENAI_BASE_URL` as needed.
+Semantic similarity uses local TF-IDF by default; notebooks can opt into API
+embedding similarity when `OPENAI_EMBEDDING_MODEL` is configured.
 
 The repo includes two starter configs:
 
@@ -255,10 +310,15 @@ Public and local datasets are normalized into the shared `EvalTask` schema befor
 evaluation. The registry supports local samples, custom files, and Hugging Face
 datasets with optional local caching.
 
+The Answer Accuracy showcase notebook focuses on closed-book knowledge QA. Context-grounded,
+multi-hop, and truthfulness datasets remain in the suite registry but are routed to
+RAG, reasoning, or truthfulness workflows.
+
 | Dataset Key | Source | Primary Use |
 |---|---|---|
 | `answer_accuracy_sample` | Local sample | Fast answer-accuracy smoke tests across multiple domains |
 | `core_demo_mixed` | Local sample | Tiny mixed-capability workflow test |
+| `curated_knowledge_v1` | Local curated JSONL | Default 33k-row source-preserving answer-accuracy benchmark across MMLU, TriviaQA, and ARC |
 | `mmlu` | Hugging Face: `cais/mmlu` | Broad multiple-choice knowledge benchmark |
 | `triviaqa` | Hugging Face: `mandarjoshi/trivia_qa` | Open-domain factual QA |
 | `natural_questions` | Hugging Face: `sentence-transformers/natural-questions` | Real user-style QA |
@@ -284,6 +344,7 @@ when `CACHE_LOCAL_COPY=True`.
 ```text
 configs/                         Evaluation and model configs
 datasets/cache/                   Normalized public dataset cache (ignored by git)
+datasets/curated/                 Versioned curated benchmark assets
 datasets/samples/                 Small local demo datasets
 docs/                             Design notes and development plan
 notebooks/                        Demo-style capability notebooks
